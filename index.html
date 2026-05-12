@@ -8,7 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
   <script src="/_sdk/element_sdk.js" type="text/javascript"></script>
   <style>
     * { box-sizing: border-box; }
@@ -142,60 +142,23 @@ async function initSupabase() {
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
-function checkPublicView() {
-  const params = new URLSearchParams(window.location.search);
-  const viewId = params.get('view');
-  if (viewId) {
-    loadPublicCard(viewId);
-    return true;
-  }
-  
-  // Se não for view pública, esconde o loading e mostra login
-  setTimeout(() => {
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-      loadingScreen.style.display = 'none';
-    }
-    
-    // Só chama estas funções se os elementos existirem
-    if (document.getElementById('f-name')) {
-      updatePreview();
-      pickColor('#4338ca');
-      pickTemplate('classic');
-    }
-    lucide.createIcons();
-  }, 100);
-  
-  return false;
-}
-
 async function loadPublicCard(cardId) {
   try {
-    // Cliente público sem autenticação para cartões públicos
     const sbPublic = supabase.createClient('https://tgobchnkeewoonnsesqv.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnb2JjaG5rZWV3b29ubnNlc3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNTc4NTgsImV4cCI6MjA5MTczMzg1OH0.-G5sJicu8G-7H7s9MsDGVGu45mz43XtiAoskW5A6zSs');
-    
     const { data, error } = await sbPublic.from('vcards').select('*').eq('id', cardId).single();
-    
     if (error || !data) {
       const loading = document.getElementById('loading-screen');
       if (loading) loading.style.display = 'none';
-      console.error('Erro ao carregar cartão público:', error);
-      showToast('Cartão não encontrado');
       return;
     }
-    
-    // Registar visita
     await recordCardVisit(cardId, data.created_by);
-    
     viewingPublicCard = data;
     displayPublicCard(data);
     const loading = document.getElementById('loading-screen');
     if (loading) loading.style.display = 'none';
   } catch (err) {
-    console.error('Erro ao carregar cartão:', err);
     const loading = document.getElementById('loading-screen');
     if (loading) loading.style.display = 'none';
-    showToast('Erro ao carregar cartão');
   }
 }
 
@@ -204,111 +167,121 @@ async function recordCardVisit(cardId, userId) {
     const visitKey = `visit_${cardId}_${new Date().toISOString().split('T')[0]}`;
     const existingVisits = parseInt(localStorage.getItem(visitKey) || '0');
     localStorage.setItem(visitKey, (existingVisits + 1).toString());
-    
-    // Sincronizar com Supabase
     const { data: existingRecord } = await sb
-      .from('card_visits')
-      .select('*')
+      .from('card_visits').select('*')
       .eq('card_id', cardId)
       .eq('date', new Date().toISOString().split('T')[0])
       .single();
-    
     if (existingRecord) {
-      await sb.from('card_visits').update({ visit_count: existingRecord.visit_count + 1 })
-        .eq('id', existingRecord.id);
+      await sb.from('card_visits').update({ visit_count: existingRecord.visit_count + 1 }).eq('id', existingRecord.id);
     } else {
-      await sb.from('card_visits').insert({
-        card_id: cardId,
-        created_by: userId,
-        date: new Date().toISOString().split('T')[0],
-        visit_count: 1
-      });
+      await sb.from('card_visits').insert({ card_id: cardId, created_by: userId, date: new Date().toISOString().split('T')[0], visit_count: 1 });
     }
-  } catch (err) {
-    console.error('Erro ao registar visita:', err);
-  }
+  } catch (err) {}
 }
 
+/* ============================================================
+   NOVO DESIGN DO CARTÃO PÚBLICO — layout igual à imagem ARSEG
+   ============================================================ */
 function displayPublicCard(card) {
-  const body = document.body;
-  
-  const color = card.cor_principal || '#4338ca';
-  const tpl = card.template || 'classic';
-  let bannerBg;
-  if (tpl === 'classic') {
-    bannerBg = `linear-gradient(135deg, ${color}, ${lightenColor(color, 30)})`;
-  } else if (tpl === 'minimal') {
-    bannerBg = '#f3f4f6';
-  } else {
-    bannerBg = '#111827';
+  const color = card.cor_principal || '#1a3a6b';
+
+  /* Avatar */
+  const avatarHtml = card.avatar_url
+    ? `<img src="${escHtml(card.avatar_url)}" style="width:100%;height:100%;object-fit:cover;">`
+    : `<span style="font-size:clamp(36px,12vw,56px);font-weight:800;color:white;">${(card.nome||'?').charAt(0).toUpperCase()}</span>`;
+
+  /* Logo (cover_url usado como logo no topo) */
+  const logoHtml = card.cover_url
+    ? `<img src="${escHtml(card.cover_url)}" style="max-height:70px;max-width:220px;object-fit:contain;">`
+    : '';
+
+  /* Redes sociais */
+  const socialDefs = [
+    { key: 'linkedin',   label: '<span style="font-style:italic;font-family:Georgia,serif;font-size:22px;font-weight:900;line-height:1;">in</span>', prefix: 'https://linkedin.com/in/' },
+    { key: 'instagram',  label: '<i data-lucide="instagram"  style="width:20px;height:20px;"></i>', prefix: 'https://instagram.com/' },
+    { key: 'facebook',   label: '<i data-lucide="facebook"   style="width:20px;height:20px;"></i>', prefix: 'https://facebook.com/' },
+    { key: 'whatsapp',   label: '<i data-lucide="message-circle" style="width:20px;height:20px;"></i>', prefix: 'https://wa.me/' },
+    { key: 'youtube',    label: '<i data-lucide="youtube"    style="width:20px;height:20px;"></i>', prefix: 'https://youtube.com/@' },
+    { key: 'tiktok',     label: '<i data-lucide="music"      style="width:20px;height:20px;"></i>', prefix: 'https://tiktok.com/@' },
+    { key: 'twitter',    label: '<i data-lucide="twitter"    style="width:20px;height:20px;"></i>', prefix: 'https://twitter.com/' }
+  ];
+
+  let socialsHtml = '';
+  socialDefs.forEach(s => {
+    if (card[s.key] && card[s.key].trim()) {
+      socialsHtml += `<a href="${escHtml(s.prefix + card[s.key])}" target="_blank" rel="noopener noreferrer"
+        style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;border:1.5px solid ${color}33;color:${color};text-decoration:none;">
+        ${s.label}</a>`;
+    }
+  });
+
+  /* Linhas de contacto */
+  function row(icon, content) {
+    return `<div style="display:flex;align-items:flex-start;gap:14px;padding:8px 0;border-bottom:1px solid #f0f0f0;">
+      <i data-lucide="${icon}" style="width:18px;height:18px;color:${color};flex-shrink:0;margin-top:2px;"></i>
+      <span style="font-size:clamp(13px,3.5vw,15px);color:#333;line-height:1.5;word-break:break-word;">${content}</span>
+    </div>`;
   }
 
-  const html = `
-    <div style="width:100%; display:flex; align-items:flex-start; justify-content:center; padding:max(12px, min(20px, 5%)); box-sizing:border-box; font-family: 'DM Sans', Arial, sans-serif; min-height:100%; overflow-y:auto;">
-      <div style="width:100%; max-width:480px; background:white; border-radius:24px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,0.1); flex-shrink:0; margin-top:max(12px, 5%);">
-        <!-- Banner opcional -->
-        <div style="height:clamp(60px, 15vw, 100px); background:${card.cover_url ? `url(${card.cover_url}) center/cover` : bannerBg}; width:100%;"></div>
-        
-        <!-- Conteúdo -->
-        <div style="padding:clamp(20px, 5%, 32px) clamp(16px, 4%, 24px) clamp(16px, 4%, 24px) clamp(16px, 4%, 24px);">
-          <!-- Avatar centralizado no topo -->
-          <div style="width:clamp(80px, 20vw, 120px); height:clamp(80px, 20vw, 120px); border-radius:50%; background:white; border:4px solid ${color}; display:flex; align-items:center; justify-content:center; font-size:clamp(24px, 8vw, 48px); font-weight:bold; color:${color}; overflow:hidden; margin:clamp(-40px, -10vw, -60px) auto clamp(12px, 3vw, 20px); position:relative; z-index:10; box-shadow:0 4px 12px rgba(0,0,0,0.1); flex-shrink:0;">
-            ${card.avatar_url ? `<img src="${card.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` : (card.nome ? card.nome.charAt(0).toUpperCase() : 'C')}
+  let contactsHtml = '';
+  if (card.telemovel)        contactsHtml += row('phone',        escHtml(card.telemovel));
+  if (card.telefone_empresa) contactsHtml += row('phone-call',   escHtml(card.telefone_empresa));
+  if (card.email)            contactsHtml += row('mail',         `<strong style="color:${color};">Corporativo:</strong> ${escHtml(card.email)}`);
+  if (card.email_empresa)    contactsHtml += row('mail',         `<strong style="color:${color};">Institucional:</strong> ${escHtml(card.email_empresa)}`);
+  if (card.website)          contactsHtml += row('globe',        `<a href="${formatWebsiteUrl(card.website)}" target="_blank" rel="noopener noreferrer" style="color:#333;text-decoration:none;">${escHtml(card.website)}</a>`);
+  if (card.fax)              contactsHtml += row('mail',         escHtml(card.fax));
+  if (card.address)          contactsHtml += row('map-pin',      `<a href="https://www.google.com/maps/search/${encodeURIComponent(card.address)}" target="_blank" rel="noopener noreferrer" style="color:#333;text-decoration:none;">${escHtml(card.address)}</a>`);
+  if (card.horario)          contactsHtml += row('clock',        escHtml(card.horario));
+
+  /* Slogan / about no rodapé */
+  const footerHtml = card.about
+    ? `<div style="padding:16px 28px 24px;border-top:1px solid #e8e8e8;">
+        <p style="font-size:clamp(12px,3vw,14px);color:${color};margin:0;line-height:1.5;">
+          ${card.empresa ? `<strong>${escHtml(card.empresa)}</strong> - ` : ''}${escHtml(card.about)}
+        </p>
+       </div>`
+    : '';
+
+  document.body.innerHTML = `
+    <div style="min-height:100vh;background:#eef0f3;display:flex;justify-content:center;align-items:flex-start;padding:clamp(16px,4vw,40px) clamp(12px,4vw,20px);font-family:'Segoe UI',Arial,sans-serif;box-sizing:border-box;overflow-y:auto;">
+      <div style="background:white;border-radius:20px;max-width:460px;width:100%;overflow:hidden;box-shadow:0 4px 30px rgba(0,0,0,0.08);margin-bottom:80px;">
+
+        <!-- HEADER: fundo cinza claro, logo + avatar -->
+        <div style="background:#eef0f3;display:flex;flex-direction:column;align-items:center;padding:clamp(20px,5vw,32px) 24px 0;">
+          ${logoHtml ? `<div style="margin-bottom:20px;text-align:center;">${logoHtml}</div>` : ''}
+          <!-- Avatar circular -->
+          <div style="width:clamp(90px,22vw,130px);height:clamp(90px,22vw,130px);border-radius:50%;border:4px solid ${color};overflow:hidden;background:#111827;display:flex;align-items:center;justify-content:center;margin-bottom:-1px;flex-shrink:0;">
+            ${avatarHtml}
           </div>
-          
-          <!-- Informações principais (centralizadas) -->
-          <div style="text-align:center; margin-bottom:clamp(12px, 3vw, 20px); word-break:break-word;">
-            <h1 style="font-size:clamp(18px, 5vw, 26px); font-weight:700; margin:0; color:#1f2937; line-height:1.2;">${escHtml(card.nome || 'Sem nome')}</h1>
-            ${card.cargo ? `<p style="font-size:clamp(12px, 3.5vw, 15px); color:${color}; margin:clamp(2px, 1vw, 4px) 0 0; font-weight:600; word-break:break-word;">${escHtml(card.cargo)}</p>` : ''}
-            ${card.departamento ? `<p style="font-size:clamp(11px, 3vw, 13px); color:#6b7280; margin:clamp(1px, 0.5vw, 2px) 0 0; font-weight:500; word-break:break-word;">${escHtml(card.departamento)}</p>` : ''}
-            ${card.empresa ? `<p style="font-size:clamp(11px, 3vw, 13px); color:#6b7280; margin:clamp(1px, 0.5vw, 2px) 0 0; font-weight:500; word-break:break-word;">${escHtml(card.empresa)}</p>` : ''}
-          </div>
-          
-          <!-- Redes sociais (abaixo do nome e empresa) -->
-          ${getSocialLinksHTML(card, color)}
-          
-          <!-- Contactos (alinhados à esquerda) -->
-          <div style="display:flex; flex-direction:column; gap:clamp(6px, 2vw, 10px); align-items:flex-start; margin-top:clamp(12px, 3vw, 16px);">
-            ${card.telemovel ? `<a href="tel:${card.telemovel}" style="display:flex; align-items:center; gap:clamp(6px, 2vw, 10px); font-size:clamp(12px, 3vw, 14px); color:#374151; text-decoration:none; padding:clamp(4px, 1vw, 6px) 0; border-radius:6px; transition:all 0.2s; width:100%; overflow:hidden;"><i data-lucide="phone" style="width:clamp(14px, 3vw, 18px); height:clamp(14px, 3vw, 18px); color:${color}; flex-shrink:0;"></i><span style="word-break:break-word; overflow-wrap:break-word;">${escHtml(card.telemovel)}</span></a>` : ''}
-            ${card.email ? `<a href="mailto:${card.email}" style="display:flex; align-items:flex-start; gap:clamp(6px, 2vw, 10px); font-size:clamp(12px, 3vw, 14px); color:#374151; text-decoration:none; padding:clamp(4px, 1vw, 6px) 0; border-radius:6px; transition:all 0.2s; width:100%;"><i data-lucide="mail" style="width:clamp(14px, 3vw, 18px); height:clamp(14px, 3vw, 18px); color:${color}; flex-shrink:0; margin-top:2px;"></i><span style="word-break:break-word; overflow-wrap:break-word; min-width:0;"><strong style="color:#1f2937;">Email Pessoal:</strong> ${escHtml(card.email)}</span></a>` : ''}
-            ${card.telefone_empresa ? `<a href="tel:${card.telefone_empresa}" style="display:flex; align-items:center; gap:clamp(6px, 2vw, 10px); font-size:clamp(12px, 3vw, 14px); color:#374151; text-decoration:none; padding:clamp(4px, 1vw, 6px) 0; border-radius:6px; transition:all 0.2s; width:100%; overflow:hidden;"><i data-lucide="building-2" style="width:clamp(14px, 3vw, 18px); height:clamp(14px, 3vw, 18px); color:${color}; flex-shrink:0;"></i><span style="word-break:break-word; overflow-wrap:break-word;"><strong style="color:#1f2937;">Empresa:</strong> ${escHtml(card.telefone_empresa)}</span></a>` : ''}
-            ${card.email_empresa ? `<a href="mailto:${card.email_empresa}" style="display:flex; align-items:flex-start; gap:clamp(6px, 2vw, 10px); font-size:clamp(12px, 3vw, 14px); color:#374151; text-decoration:none; padding:clamp(4px, 1vw, 6px) 0; border-radius:6px; transition:all 0.2s; width:100%;"><i data-lucide="mail" style="width:clamp(14px, 3vw, 18px); height:clamp(14px, 3vw, 18px); color:${color}; flex-shrink:0; margin-top:2px;"></i><span style="word-break:break-word; overflow-wrap:break-word; min-width:0;"><strong style="color:#1f2937;">Email Empresa:</strong> ${escHtml(card.email_empresa)}</span></a>` : ''}
-            ${card.fax ? `<a href="tel:${card.fax}" style="display:flex; align-items:center; gap:clamp(6px, 2vw, 10px); font-size:clamp(12px, 3vw, 14px); color:#374151; text-decoration:none; padding:clamp(4px, 1vw, 6px) 0; border-radius:6px; transition:all 0.2s; width:100%; overflow:hidden;"><i data-lucide="phone-off" style="width:clamp(14px, 3vw, 18px); height:clamp(14px, 3vw, 18px); color:${color}; flex-shrink:0;"></i><span style="word-break:break-word; overflow-wrap:break-word;"><strong style="color:#1f2937;">Fax:</strong> ${escHtml(card.fax)}</span></a>` : ''}
-            ${card.horario ? `<div style="display:flex; align-items:flex-start; gap:clamp(6px, 2vw, 10px); font-size:clamp(12px, 3vw, 14px); color:#374151; padding:clamp(4px, 1vw, 6px) 0; border-radius:6px; width:100%;"><i data-lucide="clock" style="width:clamp(14px, 3vw, 18px); height:clamp(14px, 3vw, 18px); color:${color}; flex-shrink:0; margin-top:2px;"></i><span style="word-break:break-word; overflow-wrap:break-word; min-width:0;"><strong style="color:#1f2937;">Horário:</strong> ${escHtml(card.horario)}</span></div>` : ''}
-            ${card.website ? `<a href="${formatWebsiteUrl(card.website)}" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:flex-start; gap:clamp(6px, 2vw, 10px); font-size:clamp(12px, 3vw, 14px); color:#374151; text-decoration:none; padding:clamp(4px, 1vw, 6px) 0; border-radius:6px; transition:all 0.2s; width:100%;"><i data-lucide="globe" style="width:clamp(14px, 3vw, 18px); height:clamp(14px, 3vw, 18px); color:${color}; flex-shrink:0; margin-top:2px;"></i><span style="word-break:break-word; overflow-wrap:break-word; min-width:0;">${escHtml(card.website)}</span></a>` : ''}
-            ${card.address ? `<a href="https://www.google.com/maps/search/${encodeURIComponent(card.address)}" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:flex-start; gap:clamp(6px, 2vw, 10px); font-size:clamp(12px, 3vw, 14px); color:#374151; text-decoration:none; padding:clamp(4px, 1vw, 6px) 0; border-radius:6px; transition:all 0.2s; width:100%;"><i data-lucide="map-pin" style="width:clamp(14px, 3vw, 18px); height:clamp(14px, 3vw, 18px); color:${color}; flex-shrink:0; margin-top:2px;"></i><span style="word-break:break-word; line-height:1.5; white-space:normal; overflow-wrap:break-word; min-width:0;">${escHtml(card.address)}</span></a>` : ''}
-          </div>
-          
-          ${card.about ? `<div style="margin-top:clamp(12px, 3vw, 16px); padding-top:clamp(12px, 3vw, 16px); border-top:1px solid #e5e7eb;"><p style="font-size:clamp(11px, 2.5vw, 13px); color:#4b5563; line-height:1.6; margin:0; word-break:break-word; overflow-wrap:break-word;">${escHtml(card.about).replace(/\n/g, '<br>')}</p></div>` : ''}
-          
-          <!-- Espaço para o botão flutuante -->
-          <div style="height:clamp(60px, 10vw, 80px);"></div>
         </div>
+
+        <!-- CORPO -->
+        <div style="padding:clamp(20px,5vw,28px) clamp(20px,5vw,28px) 0;text-align:center;">
+          <!-- Nome e cargo -->
+          <h1 style="font-size:clamp(20px,6vw,28px);font-weight:800;color:${color};line-height:1.2;margin:0 0 6px;">${escHtml(card.nome||'Sem nome')}</h1>
+          ${card.cargo ? `<p style="font-size:clamp(13px,3.5vw,16px);color:#555;font-weight:400;margin:0 0 4px;">${escHtml(card.cargo)}</p>` : ''}
+          ${card.departamento ? `<p style="font-size:clamp(12px,3vw,14px);color:#888;margin:0 0 4px;">${escHtml(card.departamento)}</p>` : ''}
+
+          <!-- Redes sociais -->
+          ${socialsHtml ? `<div style="display:flex;justify-content:center;gap:10px;margin:16px 0 8px;flex-wrap:wrap;">${socialsHtml}</div>` : '<div style="margin-bottom:16px;"></div>'}
+
+          <!-- Contactos -->
+          <div style="text-align:left;margin-top:8px;">
+            ${contactsHtml}
+          </div>
+        </div>
+
+        <!-- RODAPÉ com slogan -->
+        ${footerHtml}
       </div>
     </div>
-  `;
-  
-  body.innerHTML = `
-    <div style="
-      width:100%;
-      height:100%;
-      background:#f5f5f5;
-      display:flex;
-      flex-direction:column;
-      justify-content:flex-start;
-      align-items:center;
-      box-sizing:border-box;
-      overflow:hidden;
-      position:relative;
-    ">
-      ${html}
-      <button onclick="savePublicContact('${escHtml(JSON.stringify(card).replace(/'/g, '&#39;'))}');" style="position:fixed; bottom:max(16px, 5%); right:max(16px, 5%); width:clamp(48px, 12vw, 60px); height:clamp(48px, 12vw, 60px); border-radius:50%; background:${color}; color:white; border:none; font-size:clamp(18px, 5vw, 28px); cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.15); transition:all 0.2s; z-index:100;">
-        <i data-lucide="save" style="width:50%; height:50%;"></i>
-      </button>
-      <style>
-        button:hover { transform: scale(1.1); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
-      </style>
-    </div>
+
+    <!-- Botão flutuante guardar contacto -->
+    <button onclick="savePublicContact('${escHtml(JSON.stringify(card).replace(/'/g, '&#39;'))}')"
+      style="position:fixed;bottom:clamp(16px,4vw,24px);right:clamp(16px,4vw,24px);width:clamp(48px,12vw,58px);height:clamp(48px,12vw,58px);border-radius:50%;background:${color};color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.2);z-index:100;transition:transform 0.2s;">
+      <i data-lucide="save" style="width:46%;height:46%;"></i>
+    </button>
   `;
   lucide.createIcons();
 }
@@ -320,55 +293,52 @@ function savePublicContact(cardJson) {
     const last = parts.length > 1 ? parts.pop() : '';
     const first = parts.join(' ');
     let vcf = `BEGIN:VCARD\nVERSION:3.0\nN:${last};${first};;;\nFN:${card.nome}\n`;
-    if (card.cargo) vcf += `TITLE:${card.cargo}\n`;
+    if (card.cargo)   vcf += `TITLE:${card.cargo}\n`;
     if (card.empresa) vcf += `ORG:${card.empresa}\n`;
     if (card.telemovel) vcf += `TEL;TYPE=CELL:${card.telemovel}\n`;
-    if (card.email) vcf += `EMAIL:${card.email}\n`;
+    if (card.telefone_empresa) vcf += `TEL;TYPE=WORK:${card.telefone_empresa}\n`;
+    if (card.email)   vcf += `EMAIL:${card.email}\n`;
+    if (card.email_empresa) vcf += `EMAIL;TYPE=WORK:${card.email_empresa}\n`;
     if (card.website) vcf += `URL:${card.website}\n`;
     if (card.address) vcf += `ADR;TYPE=WORK:;;${card.address};;;;\n`;
-    if (card.about) vcf += `NOTE:${card.about}\n`;
+    if (card.about)   vcf += `NOTE:${card.about}\n`;
     vcf += `END:VCARD`;
-
     const blob = new Blob([vcf], { type: 'text/vcard' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = (card.nome.replace(/\s+/g, '_') || 'contact') + '.vcf';
     a.click();
     URL.revokeObjectURL(a.href);
-    
-    // Mostrar mensagem de sucesso
-    const messageDiv = document.createElement('div');
-    messageDiv.style.cssText = 'position:fixed; top:20px; right:20px; background:#10b981; color:white; padding:12px 20px; border-radius:8px; font-size:14px; z-index:9999; animation:slideIn 0.3s ease;';
-    messageDiv.textContent = 'Contacto guardado com sucesso!';
-    document.body.appendChild(messageDiv);
-    setTimeout(() => messageDiv.remove(), 3000);
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;top:20px;right:20px;background:#10b981;color:white;padding:12px 20px;border-radius:8px;font-size:14px;z-index:9999;';
+    msg.textContent = 'Contacto guardado com sucesso!';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
   } catch (err) {
-    console.error('Erro ao salvar contacto:', err);
-    const messageDiv = document.createElement('div');
-    messageDiv.style.cssText = 'position:fixed; top:20px; right:20px; background:#ef4444; color:white; padding:12px 20px; border-radius:8px; font-size:14px; z-index:9999;';
-    messageDiv.textContent = 'Erro ao guardar contacto';
-    document.body.appendChild(messageDiv);
-    setTimeout(() => messageDiv.remove(), 3000);
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;top:20px;right:20px;background:#ef4444;color:white;padding:12px 20px;border-radius:8px;font-size:14px;z-index:9999;';
+    msg.textContent = 'Erro ao guardar contacto';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
   }
 }
 
 function getSocialLinksHTML(card, color) {
   const socials = [
     { key: 'instagram', icon: 'instagram', color: '#E4405F', prefix: 'https://instagram.com/' },
-    { key: 'facebook', icon: 'facebook', color: '#1877F2', prefix: 'https://facebook.com/' },
-    { key: 'linkedin', icon: 'linkedin', color: '#0077B5', prefix: 'https://linkedin.com/in/' },
-    { key: 'whatsapp', icon: 'message-circle', color: '#25D366', prefix: 'https://wa.me/' },
-    { key: 'youtube', icon: 'youtube', color: '#FF0000', prefix: 'https://youtube.com/@' },
-    { key: 'tiktok', icon: 'music', color: '#000000', prefix: 'https://tiktok.com/@' },
-    { key: 'twitter', icon: 'twitter', color: '#1DA1F2', prefix: 'https://twitter.com/' }
+    { key: 'facebook',  icon: 'facebook',  color: '#1877F2', prefix: 'https://facebook.com/' },
+    { key: 'linkedin',  icon: 'linkedin',  color: '#0077B5', prefix: 'https://linkedin.com/in/' },
+    { key: 'whatsapp',  icon: 'message-circle', color: '#25D366', prefix: 'https://wa.me/' },
+    { key: 'youtube',   icon: 'youtube',   color: '#FF0000', prefix: 'https://youtube.com/@' },
+    { key: 'tiktok',    icon: 'music',     color: '#000000', prefix: 'https://tiktok.com/@' },
+    { key: 'twitter',   icon: 'twitter',   color: '#1DA1F2', prefix: 'https://twitter.com/' }
   ];
-
-  let html = '<div style="display:flex; gap:12px; margin-top:24px; flex-wrap:wrap; justify-content:center;">';
+  let html = '<div style="display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;justify-content:center;">';
   socials.forEach(social => {
     const val = card[social.key];
     if (val && val.trim()) {
-      const url = (social.key === 'whatsapp' ? social.prefix + val : social.prefix + val).replace(/^https:\/\//, 'https://');
-      html += `<a href="${url}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; width:40px; height:40px; align-items:center; justify-content:center; border-radius:50%; background-color:${social.color}20; text-decoration:none; transition:all 0.2s; border:1px solid transparent;"><i data-lucide="${social.icon}" style="width:18px; height:18px; color:${social.color};"></i></a>`;
+      const url = social.prefix + val;
+      html += `<a href="${url}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;width:40px;height:40px;align-items:center;justify-content:center;border-radius:50%;background-color:${social.color}20;text-decoration:none;border:1px solid transparent;"><i data-lucide="${social.icon}" style="width:18px;height:18px;color:${social.color};"></i></a>`;
     }
   });
   html += '</div>';
@@ -376,21 +346,18 @@ function getSocialLinksHTML(card, color) {
 }
 
 function lightenColor(hex, pct) {
-  let r = parseInt(hex.slice(1,3), 16);
-  let g = parseInt(hex.slice(3,5), 16);
-  let b = parseInt(hex.slice(5,7), 16);
-  r = Math.min(255, r + Math.round((255 - r) * pct / 100));
-  g = Math.min(255, g + Math.round((255 - g) * pct / 100));
-  b = Math.min(255, b + Math.round((255 - b) * pct / 100));
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  let r = parseInt(hex.slice(1,3),16);
+  let g = parseInt(hex.slice(3,5),16);
+  let b = parseInt(hex.slice(5,7),16);
+  r = Math.min(255, r + Math.round((255-r)*pct/100));
+  g = Math.min(255, g + Math.round((255-g)*pct/100));
+  b = Math.min(255, b + Math.round((255-b)*pct/100));
+  return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
 }
 
 function formatWebsiteUrl(url) {
   if (!url) return '#';
-  // Se não começa com http:// ou https://, adiciona https://
-  if (!url.match(/^https?:\/\//)) {
-    return 'https://' + url;
-  }
+  if (!url.match(/^https?:\/\//)) return 'https://' + url;
   return url;
 }
 
@@ -403,307 +370,209 @@ function escHtml(s) {
 async function doLogin(e) {
   e.preventDefault();
   const email = document.getElementById('login-email').value.trim();
-  const pwd = document.getElementById('login-password').value;
+  const pwd   = document.getElementById('login-password').value;
   const errorDiv = document.getElementById('login-error');
-  
-  if (!email || !pwd) {
-    errorDiv.textContent = 'Preencha email e senha';
-    errorDiv.classList.remove('hidden');
-    return;
-  }
-
+  if (!email || !pwd) { errorDiv.textContent = 'Preencha email e senha'; errorDiv.classList.remove('hidden'); return; }
   const btn = event.target;
   btn.disabled = true;
   btn.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin inline"></i> A entrar...';
   errorDiv.classList.add('hidden');
-
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
-    
     if (error) {
       let mensagem = error.message;
       if (error.status === 400) mensagem = 'Email ou senha incorretos.';
       errorDiv.textContent = mensagem;
       errorDiv.classList.remove('hidden');
-      btn.disabled = false;
-      btn.innerHTML = 'Entrar';
-      lucide.createIcons();
-      return;
+      btn.disabled = false; btn.innerHTML = 'Entrar'; lucide.createIcons(); return;
     }
-
     currentUser = data.user;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    
     if (ADMIN_EMAILS.includes(currentUser.email)) {
       document.getElementById('admin-section').style.display = 'block';
     } else {
       document.getElementById('admin-section').style.display = 'none';
     }
-    
-    loadUserCards();
-    lucide.createIcons();
+    loadUserCards(); lucide.createIcons();
   } catch (err) {
     errorDiv.textContent = 'Erro na autenticação';
     errorDiv.classList.remove('hidden');
-    btn.disabled = false;
-    btn.innerHTML = 'Entrar';
+    btn.disabled = false; btn.innerHTML = 'Entrar';
   }
 }
 
 async function doLogout() {
   await sb.auth.signOut();
-  currentUser = null;
-  allCards = [];
-  clearForm();
+  currentUser = null; allCards = []; clearForm();
   document.getElementById('login-screen').style.display = 'block';
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-email').value = '';
   document.getElementById('login-password').value = '';
   document.getElementById('login-error').classList.add('hidden');
-  showToast('Desconectado com sucesso!');
-  lucide.createIcons();
+  showToast('Desconectado com sucesso!'); lucide.createIcons();
 }
 
 function navTo(sec) {
-  document.querySelectorAll('section[id^="sec-"]').forEach(s => {
-    s.style.display = 'none';
-  });
-  
+  document.querySelectorAll('section[id^="sec-"]').forEach(s => s.style.display = 'none');
   const targetSection = document.getElementById('sec-' + sec);
-  if (targetSection) {
-    targetSection.style.display = 'block';
-  }
-  
+  if (targetSection) targetSection.style.display = 'block';
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelector(`[data-nav="${sec}"]`).classList.add('active');
-  
   if (sectionMeta[sec]) {
     document.getElementById('section-title').textContent = sectionMeta[sec].title;
-    document.getElementById('section-desc').textContent = sectionMeta[sec].desc;
+    document.getElementById('section-desc').textContent  = sectionMeta[sec].desc;
   }
-
   if (sec === 'dashboard') renderDashboard();
-  if (sec === 'share') populateShareSelect();
-  if (sec === 'export') checkExportReady();
-  if (sec === 'admin') loadAdminPanel();
-
-  const editSections = ['perfil', 'contactos', 'design', 'export'];
+  if (sec === 'share')     populateShareSelect();
+  if (sec === 'export')    checkExportReady();
+  if (sec === 'admin')     loadAdminPanel();
+  const editSections = ['perfil','contactos','design','export'];
   document.getElementById('save-btn').style.display = editSections.includes(sec) ? 'flex' : 'none';
 }
 
 function updatePreview() {
-  const nome = document.getElementById('f-name').value || 'João Silva';
-  const cargo = document.getElementById('f-role').value || 'Designer Gráfico';
+  const nome    = document.getElementById('f-name').value    || 'João Silva';
+  const cargo   = document.getElementById('f-role').value    || 'Designer Gráfico';
   const empresa = document.getElementById('f-company').value || 'Estúdio Criativo';
   const telemovel = document.getElementById('f-phone').value || '';
-  const email = document.getElementById('f-email').value || '';
-  const web = document.getElementById('f-website').value;
+  const email   = document.getElementById('f-email').value   || '';
+  const web     = document.getElementById('f-website').value;
   const endereco = document.getElementById('f-address').value;
-
-  document.getElementById('preview-name').textContent = nome;
-  document.getElementById('preview-role').textContent = cargo;
+  document.getElementById('preview-name').textContent    = nome;
+  document.getElementById('preview-role').textContent    = cargo;
   document.getElementById('preview-company').textContent = empresa;
-  
   if (!avatarImageData) {
-    document.getElementById('preview-avatar').textContent = nome.charAt(0).toUpperCase();
-    document.getElementById('preview-avatar').style.color = currentColor;
+    document.getElementById('preview-avatar').textContent  = nome.charAt(0).toUpperCase();
+    document.getElementById('preview-avatar').style.color  = currentColor;
   }
-
   const banner = document.getElementById('preview-banner');
   if (!coverImageData) {
-    if (currentTemplate === 'classic') {
-      banner.style.background = `linear-gradient(135deg, ${currentColor}, ${lightenColor(currentColor, 30)})`;
-    } else if (currentTemplate === 'minimal') {
-      banner.style.background = '#f3f4f6';
-    } else {
-      banner.style.background = '#111827';
-    }
+    if (currentTemplate === 'classic') banner.style.background = `linear-gradient(135deg, ${currentColor}, ${lightenColor(currentColor,30)})`;
+    else if (currentTemplate === 'minimal') banner.style.background = '#f3f4f6';
+    else banner.style.background = '#111827';
   }
-
-  // Mostrar telefone e email únicos
   const phoneRow = document.getElementById('preview-phone-row');
-  const phoneContainer = document.getElementById('preview-phone');
-  if (telemovel) {
-    phoneRow.classList.remove('hidden');
-    phoneContainer.textContent = telemovel;
-  } else {
-    phoneRow.classList.add('hidden');
-  }
-
+  if (telemovel) { phoneRow.classList.remove('hidden'); document.getElementById('preview-phone').textContent = telemovel; }
+  else phoneRow.classList.add('hidden');
   const emailRow = document.getElementById('preview-email-row');
-  const emailContainer = document.getElementById('preview-email');
-  if (email) {
-    emailRow.classList.remove('hidden');
-    emailContainer.textContent = email;
-  } else {
-    emailRow.classList.add('hidden');
-  }
-
-  setPreviewRow('preview-web-row', 'preview-web', web);
-  setPreviewRow('preview-addr-row', 'preview-addr', endereco);
-
+  if (email) { emailRow.classList.remove('hidden'); document.getElementById('preview-email').textContent = email; }
+  else emailRow.classList.add('hidden');
+  setPreviewRow('preview-web-row','preview-web',web);
+  setPreviewRow('preview-addr-row','preview-addr',endereco);
   updateSocialsPreview();
-
-  document.querySelectorAll('#preview-card [data-lucide]').forEach(ic => {
-    ic.style.color = currentColor;
-  });
+  document.querySelectorAll('#preview-card [data-lucide]').forEach(ic => ic.style.color = currentColor);
 }
 
 function updateSocialsPreview() {
   const socialsDiv = document.getElementById('preview-socials');
   socialsDiv.innerHTML = '';
-  
   const socials = [
-    { id: 'f-instagram', icon: 'instagram', color: '#E4405F' },
-    { id: 'f-facebook', icon: 'facebook', color: '#1877F2' },
-    { id: 'f-linkedin', icon: 'linkedin', color: '#0077B5' },
-    { id: 'f-whatsapp', icon: 'message-circle', color: '#25D366' },
-    { id: 'f-youtube', icon: 'youtube', color: '#FF0000' },
-    { id: 'f-tiktok', icon: 'music', color: '#000000' },
-    { id: 'f-twitter', icon: 'twitter', color: '#1DA1F2' }
+    { id:'f-instagram', icon:'instagram',     color:'#E4405F' },
+    { id:'f-facebook',  icon:'facebook',      color:'#1877F2' },
+    { id:'f-linkedin',  icon:'linkedin',      color:'#0077B5' },
+    { id:'f-whatsapp',  icon:'message-circle',color:'#25D366' },
+    { id:'f-youtube',   icon:'youtube',       color:'#FF0000' },
+    { id:'f-tiktok',    icon:'music',         color:'#000000' },
+    { id:'f-twitter',   icon:'twitter',       color:'#1DA1F2' }
   ];
-
   socials.forEach(social => {
     const val = document.getElementById(social.id).value;
     if (val && val.trim()) {
       const link = document.createElement('a');
-      link.href = '#';
-      link.target = '_blank';
-      link.onclick = (e) => e.preventDefault();
-      link.style.display = 'inline-flex';
-      link.style.width = '32px';
-      link.style.height = '32px';
-      link.style.alignItems = 'center';
-      link.style.justifyContent = 'center';
-      link.style.borderRadius = '50%';
-      link.style.backgroundColor = social.color + '20';
-      link.innerHTML = `<i data-lucide="${social.icon}" style="width:16px; height:16px; color:${social.color};"></i>`;
+      link.href = '#'; link.target = '_blank'; link.onclick = e => e.preventDefault();
+      Object.assign(link.style, { display:'inline-flex', width:'32px', height:'32px', alignItems:'center', justifyContent:'center', borderRadius:'50%', backgroundColor: social.color+'20' });
+      link.innerHTML = `<i data-lucide="${social.icon}" style="width:16px;height:16px;color:${social.color};"></i>`;
       socialsDiv.appendChild(link);
     }
   });
-  
   lucide.createIcons();
 }
 
 function setPreviewRow(rowId, spanId, val) {
-  const row = document.getElementById(rowId);
+  const row  = document.getElementById(rowId);
   const span = document.getElementById(spanId);
-  if (val && val.trim()) {
-    row.classList.remove('hidden');
-    span.textContent = val;
-  } else {
-    row.classList.add('hidden');
-  }
+  if (val && val.trim()) { row.classList.remove('hidden'); span.textContent = val; }
+  else row.classList.add('hidden');
 }
 
 function pickColor(c) {
   currentColor = c;
-  document.getElementById('custom-color').value = c;
+  document.getElementById('custom-color').value     = c;
   document.getElementById('custom-color-hex').value = c.toUpperCase();
-  document.querySelectorAll('.color-swatch').forEach(s => {
-    s.style.borderColor = s.dataset.color === c ? c : 'transparent';
-  });
+  document.querySelectorAll('.color-swatch').forEach(s => s.style.borderColor = s.dataset.color === c ? c : 'transparent');
   updatePreview();
 }
 
 function pickTemplate(t) {
   currentTemplate = t;
-  document.querySelectorAll('.template-card').forEach(tc => {
-    tc.style.borderColor = tc.dataset.tpl === t ? currentColor : '#e5e7eb';
-  });
+  document.querySelectorAll('.template-card').forEach(tc => tc.style.borderColor = tc.dataset.tpl === t ? currentColor : '#e5e7eb');
   updatePreview();
 }
 
 async function saveCard() {
-  if (!currentUser) {
-    showToast('Faça login primeiro!');
-    return;
-  }
-
+  if (!currentUser) { showToast('Faça login primeiro!'); return; }
   const nome = document.getElementById('f-name').value.trim();
-  if (!nome) {
-    showToast('Preencha pelo menos o nome');
-    return;
-  }
-
+  if (!nome) { showToast('Preencha pelo menos o nome'); return; }
   const btn = document.getElementById('save-btn');
   btn.disabled = true;
   btn.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> A guardar...';
   lucide.createIcons();
-
   try {
-    let coverUrl = editingCard?.cover_image || null;
+    let coverUrl  = editingCard?.cover_image  || null;
     let avatarUrl = editingCard?.avatar_image || null;
-
     if (coverImageData && coverImageData instanceof File) {
-      const ext = coverImageData.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '');
-      const fileName = `${currentUser.id}_cover_${Date.now()}.${ext || 'png'}`;
-      const { data: uploadData, error: uploadErr } = await sb.storage
-        .from('vcard_images')
-        .upload(fileName, coverImageData, { upsert: true });
-      
+      const ext = coverImageData.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'');
+      const fileName = `${currentUser.id}_cover_${Date.now()}.${ext||'png'}`;
+      const { error: uploadErr } = await sb.storage.from('vcard_images').upload(fileName, coverImageData, { upsert: true });
       if (uploadErr) throw uploadErr;
       const { data: urlData } = sb.storage.from('vcard_images').getPublicUrl(fileName);
       coverUrl = urlData?.publicUrl || null;
     }
-
     if (avatarImageData && avatarImageData instanceof File) {
-      const ext = avatarImageData.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '');
-      const fileName = `${currentUser.id}_avatar_${Date.now()}.${ext || 'png'}`;
-      const { data: uploadData, error: uploadErr } = await sb.storage
-        .from('vcard_images')
-        .upload(fileName, avatarImageData, { upsert: true });
-      
+      const ext = avatarImageData.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'');
+      const fileName = `${currentUser.id}_avatar_${Date.now()}.${ext||'png'}`;
+      const { error: uploadErr } = await sb.storage.from('vcard_images').upload(fileName, avatarImageData, { upsert: true });
       if (uploadErr) throw uploadErr;
       const { data: urlData } = sb.storage.from('vcard_images').getPublicUrl(fileName);
       avatarUrl = urlData?.publicUrl || null;
     }
-
     const data = {
-      nome: nome,
-      cargo: document.getElementById('f-role').value || '',
-      departamento: document.getElementById('f-department').value || '',
-      empresa: document.getElementById('f-company').value || '',
-      about: document.getElementById('f-about').value || '',
-      telemovel: getFirstPhone(),
-      email: getFirstEmail(),
-      telefone_empresa: document.getElementById('f-phone-empresa').value || '',
-      email_empresa: document.getElementById('f-email-empresa').value || '',
-      fax: document.getElementById('f-fax').value || '',
-      horario: document.getElementById('f-horario').value || '',
-      website: document.getElementById('f-website').value || '',
-      address: document.getElementById('f-address').value || '',
-      instagram: document.getElementById('f-instagram').value || '',
-      facebook: document.getElementById('f-facebook').value || '',
-      linkedin: document.getElementById('f-linkedin').value || '',
-      whatsapp: document.getElementById('f-whatsapp').value || '',
-      youtube: document.getElementById('f-youtube').value || '',
-      tiktok: document.getElementById('f-tiktok').value || '',
-      twitter: document.getElementById('f-twitter').value || '',
-      cover_url: coverUrl,
-      avatar_url: avatarUrl,
-      cor_principal: currentColor,
-      template: currentTemplate,
-      is_public: true,
-      updated_at: new Date().toISOString()
+      nome, cargo: document.getElementById('f-role').value||'',
+      departamento: document.getElementById('f-department').value||'',
+      empresa: document.getElementById('f-company').value||'',
+      about: document.getElementById('f-about').value||'',
+      telemovel: getFirstPhone(), email: getFirstEmail(),
+      telefone_empresa: document.getElementById('f-phone-empresa').value||'',
+      email_empresa: document.getElementById('f-email-empresa').value||'',
+      fax: document.getElementById('f-fax').value||'',
+      horario: document.getElementById('f-horario').value||'',
+      website: document.getElementById('f-website').value||'',
+      address: document.getElementById('f-address').value||'',
+      instagram: document.getElementById('f-instagram').value||'',
+      facebook: document.getElementById('f-facebook').value||'',
+      linkedin: document.getElementById('f-linkedin').value||'',
+      whatsapp: document.getElementById('f-whatsapp').value||'',
+      youtube: document.getElementById('f-youtube').value||'',
+      tiktok: document.getElementById('f-tiktok').value||'',
+      twitter: document.getElementById('f-twitter').value||'',
+      cover_url: coverUrl, avatar_url: avatarUrl,
+      cor_principal: currentColor, template: currentTemplate,
+      is_public: true, updated_at: new Date().toISOString()
     };
-
     let result;
     if (editingCard) {
       result = await sb.from('vcards').update(data).eq('id', editingCard.id);
     } else {
-      data.created_by = currentUser.id;
-      data.created_at = new Date().toISOString();
+      data.created_by = currentUser.id; data.created_at = new Date().toISOString();
       result = await sb.from('vcards').insert([data]);
     }
-
     if (result.error) throw result.error;
     showToast(editingCard ? 'Cartão atualizado!' : 'Cartão guardado!');
     if (!editingCard) clearForm();
     await loadUserCards();
   } catch (err) {
-    showToast('Erro ao guardar: ' + (err.message || 'tente novamente'));
+    showToast('Erro ao guardar: ' + (err.message||'tente novamente'));
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> Guardar';
@@ -712,142 +581,84 @@ async function saveCard() {
 }
 
 function clearForm() {
-  ['f-name', 'f-role', 'f-company', 'f-website', 'f-address', 'f-about', 'f-instagram', 'f-facebook', 'f-linkedin', 'f-whatsapp', 'f-youtube', 'f-tiktok', 'f-twitter', 'f-cover', 'f-avatar', 'f-phone', 'f-email'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
+  ['f-name','f-role','f-company','f-website','f-address','f-about','f-instagram','f-facebook','f-linkedin','f-whatsapp','f-youtube','f-tiktok','f-twitter','f-cover','f-avatar','f-phone','f-email'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
   });
-  coverImageData = null;
-  avatarImageData = null;
-  document.getElementById('preview-cover-img').style.display = 'none';
+  coverImageData = null; avatarImageData = null;
+  document.getElementById('preview-cover-img').style.display  = 'none';
   document.getElementById('preview-avatar-img').style.display = 'none';
-  document.getElementById('preview-avatar').style.display = 'block';
-  editingCard = null;
-  currentColor = '#4338ca';
-  currentTemplate = 'classic';
-  pickColor(currentColor);
-  pickTemplate(currentTemplate);
-  updatePreview();
+  document.getElementById('preview-avatar').style.display     = 'block';
+  editingCard = null; currentColor = '#4338ca'; currentTemplate = 'classic';
+  pickColor(currentColor); pickTemplate(currentTemplate); updatePreview();
 }
 
 async function loadUserCards() {
   if (!currentUser) return;
-  
   try {
-    // Check if user is admin
     const isAdmin = ADMIN_EMAILS.includes(currentUser.email);
-    
-    // Admin fetches ALL cards, regular users fetch only theirs
     let query = sb.from('vcards').select('*');
-    
-    if (!isAdmin) {
-      query = query.eq('created_by', currentUser.id);
-    }
-    
+    if (!isAdmin) query = query.eq('created_by', currentUser.id);
     const { data, error } = await query.order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error('Erro ao carregar:', error);
-      // Show warning but continue - RLS might be blocking
-      showToast('Aviso: Não consegui carregar todos os dados');
-      allCards = [];
-    } else {
-      allCards = data || [];
-    }
-    
+    if (error) { showToast('Aviso: Não consegui carregar todos os dados'); allCards = []; }
+    else allCards = data || [];
     document.getElementById('card-count').textContent = allCards.length;
-    if (document.getElementById('sec-dashboard').style.display !== 'none') {
-      renderDashboard();
-    }
-  } catch (err) {
-    console.error('Erro ao carregar cartões:', err);
-    allCards = [];
-  }
+    if (document.getElementById('sec-dashboard').style.display !== 'none') renderDashboard();
+  } catch (err) { allCards = []; }
 }
 
 function renderDashboard() {
-  const grid = document.getElementById('cards-grid');
+  const grid  = document.getElementById('cards-grid');
   const empty = document.getElementById('empty-state');
-
-  if (allCards.length === 0) {
-    grid.innerHTML = '';
-    empty.classList.remove('hidden');
-    return;
-  }
-
-  empty.classList.add('hidden');
-  grid.innerHTML = '';
-
-  allCards.forEach(card => {
-    grid.appendChild(createCardElement(card));
-  });
-
+  if (allCards.length === 0) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden'); grid.innerHTML = '';
+  allCards.forEach(card => grid.appendChild(createCardElement(card)));
   lucide.createIcons();
 }
 
 function createCardElement(card) {
   const div = document.createElement('div');
   div.className = 'card-preview bg-white rounded-xl border border-gray-200 overflow-hidden';
-  
   const color = card.cor_principal || '#4338ca';
-  const tpl = card.template || 'classic';
-  let bannerBg;
-  if (tpl === 'classic') {
-    bannerBg = `linear-gradient(135deg, ${color}, ${lightenColor(color, 30)})`;
-  } else if (tpl === 'minimal') {
-    bannerBg = '#f3f4f6';
-  } else {
-    bannerBg = '#111827';
-  }
-
+  const tpl   = card.template || 'classic';
+  let bannerBg = tpl==='classic' ? `linear-gradient(135deg,${color},${lightenColor(color,30)})` : tpl==='minimal' ? '#f3f4f6' : '#111827';
   div.innerHTML = `
-    <div class="h-16" style="background:${card.cover_image ? 'url(' + card.cover_image + ') center/cover' : bannerBg};"></div>
+    <div class="h-16" style="background:${card.cover_image?'url('+card.cover_image+') center/cover':bannerBg};"></div>
     <div class="px-4 py-3">
-      <h4 class="font-semibold text-gray-800 text-sm">${escHtml(card.nome || 'Sem nome')}</h4>
-      <p class="text-xs text-gray-500">${escHtml(card.cargo || '')}${card.empresa ? ' · ' + escHtml(card.empresa) : ''}</p>
+      <h4 class="font-semibold text-gray-800 text-sm">${escHtml(card.nome||'Sem nome')}</h4>
+      <p class="text-xs text-gray-500">${escHtml(card.cargo||'')}${card.empresa?' · '+escHtml(card.empresa):''}</p>
       <div class="flex gap-2 mt-3">
-        <button onclick="editCard('${card.id}')" class="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-600">
-          <i data-lucide="pen" class="w-3 h-3"></i> Editar
-        </button>
-        <button onclick="duplicateCard('${card.id}')" class="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-500">
-          <i data-lucide="copy" class="w-3 h-3"></i> Duplicar
-        </button>
-        <button onclick="requestDelete('${card.id}')" class="flex items-center gap-1 text-xs px-2 py-1 rounded bg-red-50 hover:bg-red-100 text-red-500">
-          <i data-lucide="trash-2" class="w-3 h-3"></i> Eliminar
-        </button>
+        <button onclick="editCard('${card.id}')" class="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-600"><i data-lucide="pen" class="w-3 h-3"></i> Editar</button>
+        <button onclick="duplicateCard('${card.id}')" class="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-500"><i data-lucide="copy" class="w-3 h-3"></i> Duplicar</button>
+        <button onclick="requestDelete('${card.id}')" class="flex items-center gap-1 text-xs px-2 py-1 rounded bg-red-50 hover:bg-red-100 text-red-500"><i data-lucide="trash-2" class="w-3 h-3"></i> Eliminar</button>
       </div>
-    </div>
-  `;
+    </div>`;
   return div;
 }
 
 function editCard(id) {
-  const card = allCards.find(c => c.id === id);
-  if (!card) return;
+  const card = allCards.find(c => c.id === id); if (!card) return;
   editingCard = card;
-  document.getElementById('f-name').value = card.nome || '';
-  document.getElementById('f-role').value = card.cargo || '';
-  document.getElementById('f-department').value = card.departamento || '';
-  document.getElementById('f-company').value = card.empresa || '';
-  document.getElementById('f-about').value = card.about || '';
-  document.getElementById('f-website').value = card.website || '';
-  document.getElementById('f-address').value = card.address || '';
-  document.getElementById('f-phone').value = card.telemovel || '';
-  document.getElementById('f-email').value = card.email || '';
-  document.getElementById('f-phone-empresa').value = card.telefone_empresa || '';
-  document.getElementById('f-email-empresa').value = card.email_empresa || '';
-  document.getElementById('f-fax').value = card.fax || '';
-  document.getElementById('f-horario').value = card.horario || '';
-  document.getElementById('f-instagram').value = card.instagram || '';
-  document.getElementById('f-facebook').value = card.facebook || '';
-  document.getElementById('f-linkedin').value = card.linkedin || '';
-  document.getElementById('f-whatsapp').value = card.whatsapp || '';
-  document.getElementById('f-youtube').value = card.youtube || '';
-  document.getElementById('f-tiktok').value = card.tiktok || '';
-  document.getElementById('f-twitter').value = card.twitter || '';
-  
-  coverImageData = card.cover_url || null;
-  avatarImageData = card.avatar_url || null;
-  
+  document.getElementById('f-name').value          = card.nome||'';
+  document.getElementById('f-role').value          = card.cargo||'';
+  document.getElementById('f-department').value    = card.departamento||'';
+  document.getElementById('f-company').value       = card.empresa||'';
+  document.getElementById('f-about').value         = card.about||'';
+  document.getElementById('f-website').value       = card.website||'';
+  document.getElementById('f-address').value       = card.address||'';
+  document.getElementById('f-phone').value         = card.telemovel||'';
+  document.getElementById('f-email').value         = card.email||'';
+  document.getElementById('f-phone-empresa').value = card.telefone_empresa||'';
+  document.getElementById('f-email-empresa').value = card.email_empresa||'';
+  document.getElementById('f-fax').value           = card.fax||'';
+  document.getElementById('f-horario').value       = card.horario||'';
+  document.getElementById('f-instagram').value     = card.instagram||'';
+  document.getElementById('f-facebook').value      = card.facebook||'';
+  document.getElementById('f-linkedin').value      = card.linkedin||'';
+  document.getElementById('f-whatsapp').value      = card.whatsapp||'';
+  document.getElementById('f-youtube').value       = card.youtube||'';
+  document.getElementById('f-tiktok').value        = card.tiktok||'';
+  document.getElementById('f-twitter').value       = card.twitter||'';
+  coverImageData = card.cover_url||null; avatarImageData = card.avatar_url||null;
   if (card.cover_url) {
     document.getElementById('preview-cover-img').src = card.cover_url;
     document.getElementById('preview-cover-img').style.display = 'block';
@@ -858,532 +669,237 @@ function editCard(id) {
     document.getElementById('preview-avatar-img').style.display = 'block';
     document.getElementById('preview-avatar').style.display = 'none';
   }
-  
-  currentColor = card.cor_principal || '#4338ca';
-  currentTemplate = card.template || 'classic';
-  pickColor(currentColor);
-  pickTemplate(currentTemplate);
-  updatePreview();
-  navTo('perfil');
-  showToast('A editar cartão de ' + (card.nome || 'sem nome'));
-  lucide.createIcons();
+  currentColor = card.cor_principal||'#4338ca'; currentTemplate = card.template||'classic';
+  pickColor(currentColor); pickTemplate(currentTemplate); updatePreview();
+  navTo('perfil'); showToast('A editar cartão de '+(card.nome||'sem nome')); lucide.createIcons();
 }
 
 async function duplicateCard(id) {
-  const card = allCards.find(c => c.id === id);
-  if (!card) return;
-  
+  const card = allCards.find(c => c.id === id); if (!card) return;
   const btn = event.target.closest('button');
-  btn.disabled = true;
-  btn.innerHTML = '<i data-lucide="loader" class="w-3 h-3 animate-spin inline"></i> A duplicar...';
-  lucide.createIcons();
-
+  btn.disabled = true; btn.innerHTML = '<i data-lucide="loader" class="w-3 h-3 animate-spin inline"></i> A duplicar...'; lucide.createIcons();
   try {
-    const data = {
-      nome: card.nome || '',
-      cargo: card.cargo || '',
-      departamento: card.departamento || '',
-      empresa: card.empresa || '',
-      about: card.about || '',
-      telemovel: card.telemovel || '',
-      email: card.email || '',
-      telefone_empresa: card.telefone_empresa || '',
-      email_empresa: card.email_empresa || '',
-      fax: card.fax || '',
-      horario: card.horario || '',
-      website: card.website || '',
-      address: card.address || '',
-      instagram: card.instagram || '',
-      facebook: card.facebook || '',
-      linkedin: card.linkedin || '',
-      whatsapp: card.whatsapp || '',
-      youtube: card.youtube || '',
-      tiktok: card.tiktok || '',
-      twitter: card.twitter || '',
-      cover_url: card.cover_url || null,
-      avatar_url: card.avatar_url || null,
-      cor_principal: card.cor_principal || '#4338ca',
-      template: card.template || 'classic',
-      created_by: currentUser.id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
+    const data = { ...card, created_by: currentUser.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    delete data.id;
     const result = await sb.from('vcards').insert([data]);
     if (result.error) throw result.error;
-    
-    showToast('Cartão duplicado com sucesso!');
-    await loadUserCards();
-    renderDashboard();
-  } catch (err) {
-    showToast('Erro ao duplicar: ' + (err.message || 'tente novamente'));
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="copy" class="w-3 h-3"></i> Duplicar';
-    lucide.createIcons();
-  }
+    showToast('Cartão duplicado com sucesso!'); await loadUserCards(); renderDashboard();
+  } catch (err) { showToast('Erro ao duplicar: '+(err.message||'tente novamente')); }
+  finally { btn.disabled = false; btn.innerHTML = '<i data-lucide="copy" class="w-3 h-3"></i> Duplicar'; lucide.createIcons(); }
 }
 
 function requestDelete(id) {
-  deleteTarget = allCards.find(c => c.id === id);
-  if (!deleteTarget) return;
+  deleteTarget = allCards.find(c => c.id === id); if (!deleteTarget) return;
   document.getElementById('delete-modal').classList.remove('hidden');
   document.getElementById('confirm-delete-btn').onclick = async () => {
     document.getElementById('confirm-delete-btn').disabled = true;
     document.getElementById('confirm-delete-btn').textContent = 'A eliminar...';
-    
     try {
       const result = await sb.from('vcards').delete().eq('id', deleteTarget.id).eq('created_by', currentUser.id);
       if (result.error) throw result.error;
-      showToast('Cartão eliminado!');
-      await loadUserCards();
-    } catch (err) {
-      showToast('Erro ao eliminar');
-    }
-    
+      showToast('Cartão eliminado!'); await loadUserCards();
+    } catch (err) { showToast('Erro ao eliminar'); }
     document.getElementById('confirm-delete-btn').disabled = false;
     document.getElementById('confirm-delete-btn').textContent = 'Eliminar';
     closeDeleteModal();
   };
 }
 
-function closeDeleteModal() {
-  document.getElementById('delete-modal').classList.add('hidden');
-  deleteTarget = null;
-}
+function closeDeleteModal() { document.getElementById('delete-modal').classList.add('hidden'); deleteTarget = null; }
 
 function populateShareSelect() {
   const select = document.getElementById('share-select');
   select.innerHTML = '<option value="">-- Escolha um cartão --</option>';
   allCards.forEach(card => {
-    const opt = document.createElement('option');
-    opt.value = card.id;
-    opt.textContent = card.nome || 'Sem nome';
-    select.appendChild(opt);
+    const opt = document.createElement('option'); opt.value = card.id; opt.textContent = card.nome||'Sem nome'; select.appendChild(opt);
   });
-  
   select.onchange = () => {
-    if (select.value) {
-      const card = allCards.find(c => c.id === select.value);
-      generateShareLink(card);
-    } else {
-      document.getElementById('share-container').classList.add('hidden');
-    }
+    if (select.value) { const card = allCards.find(c => c.id === select.value); generateShareLink(card); }
+    else document.getElementById('share-container').classList.add('hidden');
   };
 }
 
 function generateShareLink(card) {
-  const baseUrl = window.location.origin + window.location.pathname;
+  const baseUrl   = window.location.origin + window.location.pathname;
   const publicUrl = baseUrl + '?view=' + card.id;
   document.getElementById('share-link').value = publicUrl;
   document.getElementById('share-container').classList.remove('hidden');
-  
-  const qrContainer = document.getElementById('share-qr');
-  qrContainer.innerHTML = '';
-  
-  // Gera QR Code se a biblioteca estiver carregada
-  if (typeof QRCode !== 'undefined') {
-    new QRCode(qrContainer, {
-      text: publicUrl,
-      width: 200,
-      height: 200,
-      colorDark: currentColor,
-      colorLight: '#ffffff'
-    });
-  }
+  const qrContainer = document.getElementById('share-qr'); qrContainer.innerHTML = '';
+  if (typeof QRCode !== 'undefined') { new QRCode(qrContainer, { text: publicUrl, width: 200, height: 200, colorDark: currentColor, colorLight: '#ffffff' }); }
 }
 
-function copyLink() {
-  const link = document.getElementById('share-link').value;
-  navigator.clipboard.writeText(link).then(() => {
-    showToast('Link copiado!');
-  });
-}
+function copyLink() { navigator.clipboard.writeText(document.getElementById('share-link').value).then(() => showToast('Link copiado!')); }
 
 function checkExportReady() {
   const msg = document.getElementById('export-select-msg');
-  const nome = document.getElementById('f-name').value.trim();
-  if (!nome) {
-    msg.classList.remove('hidden');
-  } else {
-    msg.classList.add('hidden');
-  }
+  if (!document.getElementById('f-name').value.trim()) msg.classList.remove('hidden');
+  else msg.classList.add('hidden');
 }
 
 function getExportCard() {
   return {
-    nome: document.getElementById('f-name').value || '',
-    cargo: document.getElementById('f-role').value || '',
-    empresa: document.getElementById('f-company').value || '',
-    telemovel: document.getElementById('f-phone').value || '',
-    email: document.getElementById('f-email').value || '',
-    website: document.getElementById('f-website').value || '',
-    address: document.getElementById('f-address').value || '',
-    about: document.getElementById('f-about').value || '',
-    instagram: document.getElementById('f-instagram').value || '',
-    facebook: document.getElementById('f-facebook').value || '',
-    linkedin: document.getElementById('f-linkedin').value || '',
-    whatsapp: document.getElementById('f-whatsapp').value || '',
-    youtube: document.getElementById('f-youtube').value || '',
-    tiktok: document.getElementById('f-tiktok').value || '',
-    twitter: document.getElementById('f-twitter').value || ''
+    nome: document.getElementById('f-name').value||'', cargo: document.getElementById('f-role').value||'',
+    empresa: document.getElementById('f-company').value||'', telemovel: document.getElementById('f-phone').value||'',
+    email: document.getElementById('f-email').value||'', website: document.getElementById('f-website').value||'',
+    address: document.getElementById('f-address').value||'', about: document.getElementById('f-about').value||'',
+    instagram: document.getElementById('f-instagram').value||'', facebook: document.getElementById('f-facebook').value||'',
+    linkedin: document.getElementById('f-linkedin').value||'', whatsapp: document.getElementById('f-whatsapp').value||'',
+    youtube: document.getElementById('f-youtube').value||'', tiktok: document.getElementById('f-tiktok').value||'',
+    twitter: document.getElementById('f-twitter').value||''
   };
 }
 
-function getFirstPhone() {
-  const val = document.getElementById('f-phone')?.value || '';
-  return val.trim();
-}
-
-function getFirstEmail() {
-  const val = document.getElementById('f-email')?.value || '';
-  return val.trim();
-}
+function getFirstPhone() { return document.getElementById('f-phone')?.value.trim()||''; }
+function getFirstEmail() { return document.getElementById('f-email')?.value.trim()||''; }
 
 function downloadVCF() {
-  const c = getExportCard();
-  if (!c.nome) {
-    showToast('Preencha pelo menos o nome.');
-    return;
-  }
-  
-  const parts = c.nome.split(' ');
-  const last = parts.length > 1 ? parts.pop() : '';
-  const first = parts.join(' ');
+  const c = getExportCard(); if (!c.nome) { showToast('Preencha pelo menos o nome.'); return; }
+  const parts = c.nome.split(' '); const last = parts.length>1?parts.pop():''; const first = parts.join(' ');
   let vcf = `BEGIN:VCARD\nVERSION:3.0\nN:${last};${first};;;\nFN:${c.nome}\n`;
-  if (c.cargo) vcf += `TITLE:${c.cargo}\n`;
+  if (c.cargo)   vcf += `TITLE:${c.cargo}\n`;
   if (c.empresa) vcf += `ORG:${c.empresa}\n`;
   if (c.telemovel) vcf += `TEL;TYPE=CELL:${c.telemovel}\n`;
-  if (c.email) vcf += `EMAIL:${c.email}\n`;
+  if (c.email)   vcf += `EMAIL:${c.email}\n`;
   if (c.website) vcf += `URL:${c.website}\n`;
   if (c.address) vcf += `ADR;TYPE=WORK:;;${c.address};;;;\n`;
   vcf += `END:VCARD`;
-
-  const blob = new Blob([vcf], { type: 'text/vcard' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = (c.nome.replace(/\s+/g, '_') || 'contact') + '.vcf';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const blob = new Blob([vcf],{type:'text/vcard'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (c.nome.replace(/\s+/g,'_')||'contact')+'.vcf'; a.click(); URL.revokeObjectURL(a.href);
   showToast('VCF descarregado!');
 }
 
 function downloadQR() {
-  const c = getExportCard();
-  if (!c.nome) {
-    showToast('Preencha pelo menos o nome.');
-    return;
-  }
-
-  const container = document.getElementById('qr-container');
-  const qrDiv = document.getElementById('qr-canvas');
-  
-  qrDiv.innerHTML = '';
-  container.classList.remove('hidden');
-
-  const vCardData = `BEGIN:VCARD\nVERSION:3.0\nFN:${c.nome}\nTEL:${c.telemovel || ''}\nEMAIL:${c.email || ''}\nORG:${c.empresa || ''}\nTITLE:${c.cargo || ''}\nEND:VCARD`;
-
-  // Aguarda um pouco para garantir que a biblioteca está carregada
+  const c = getExportCard(); if (!c.nome) { showToast('Preencha pelo menos o nome.'); return; }
+  const container = document.getElementById('qr-container'); const qrDiv = document.getElementById('qr-canvas');
+  qrDiv.innerHTML = ''; container.classList.remove('hidden');
+  const vCardData = `BEGIN:VCARD\nVERSION:3.0\nFN:${c.nome}\nTEL:${c.telemovel||''}\nEMAIL:${c.email||''}\nORG:${c.empresa||''}\nTITLE:${c.cargo||''}\nEND:VCARD`;
   setTimeout(() => {
-    if (typeof QRCode !== 'undefined') {
-      new QRCode(qrDiv, {
-        text: vCardData,
-        width: 200,
-        height: 200,
-        colorDark: currentColor,
-        colorLight: '#ffffff'
-      });
-    } else {
-      showToast('Erro ao gerar QR Code - tente novamente');
-    }
+    if (typeof QRCode !== 'undefined') new QRCode(qrDiv,{text:vCardData,width:200,height:200,colorDark:currentColor,colorLight:'#ffffff'});
+    else showToast('Erro ao gerar QR Code - tente novamente');
   }, 100);
 }
 
 function showToast(msg) {
-  const t = document.getElementById('toast');
-  document.getElementById('toast-text').textContent = msg;
-  t.classList.remove('hidden');
-  lucide.createIcons();
-  setTimeout(() => t.classList.add('hidden'), 3000);
+  const t = document.getElementById('toast'); document.getElementById('toast-text').textContent = msg;
+  t.classList.remove('hidden'); lucide.createIcons(); setTimeout(() => t.classList.add('hidden'), 3000);
 }
 
 async function loadAdminPanel() {
-  if (!currentUser || !ADMIN_EMAILS.includes(currentUser.email)) {
-    showToast('Sem permissões de administrador');
-    return;
-  }
-
+  if (!currentUser || !ADMIN_EMAILS.includes(currentUser.email)) { showToast('Sem permissões de administrador'); return; }
   try {
-    const { data: allCardsData, error } = await sb.from('vcards').select('*').order('created_at', { ascending: false });
+    const { data: allCardsData, error } = await sb.from('vcards').select('*').order('created_at',{ascending:false});
     if (error) throw error;
-
-    // Carregar dados de visitas
-    let visitsByCard = {};
-    let totalVisits = 0;
+    let visitsByCard = {}; let totalVisits = 0;
     try {
       const { data: visitsData } = await sb.from('card_visits').select('*');
-      (visitsData || []).forEach(v => {
-        visitsByCard[v.card_id] = (visitsByCard[v.card_id] || 0) + v.visit_count;
-        totalVisits += v.visit_count;
-      });
-    } catch (visitsErr) {
-      console.log('Tabela de visitas não existe ainda ou erro ao carregar');
-      visitsByCard = {};
-      totalVisits = 0;
-    }
-
-    const uniqueUsers = new Set(allCardsData.map(c => c.created_by)).size;
-    const todayCards = allCardsData.filter(c => {
-      const createdDate = new Date(c.created_at).toDateString();
-      const today = new Date().toDateString();
-      return createdDate === today;
-    }).length;
-
+      (visitsData||[]).forEach(v => { visitsByCard[v.card_id] = (visitsByCard[v.card_id]||0)+v.visit_count; totalVisits+=v.visit_count; });
+    } catch(e) {}
+    const uniqueUsers = new Set(allCardsData.map(c=>c.created_by)).size;
+    const todayCards  = allCardsData.filter(c => new Date(c.created_at).toDateString()===new Date().toDateString()).length;
     document.getElementById('admin-users-count').textContent = uniqueUsers;
     document.getElementById('admin-cards-count').textContent = allCardsData.length;
     document.getElementById('admin-today-count').textContent = todayCards;
-
-    // Filtrar cartões
     let filteredCards = allCardsData;
-    if (adminSearchQuery && adminSearchQuery.trim()) {
-      const query = adminSearchQuery.toLowerCase();
-      filteredCards = filteredCards.filter(c => 
-        (c.nome || '').toLowerCase().includes(query) ||
-        (c.cargo || '').toLowerCase().includes(query) ||
-        (c.empresa || '').toLowerCase().includes(query)
-      );
+    if (adminSearchQuery.trim()) {
+      const q = adminSearchQuery.toLowerCase();
+      filteredCards = filteredCards.filter(c => (c.nome||'').toLowerCase().includes(q)||(c.cargo||'').toLowerCase().includes(q)||(c.empresa||'').toLowerCase().includes(q));
     }
-    if (adminCompanyFilter && adminCompanyFilter.trim()) {
-      filteredCards = filteredCards.filter(c => 
-        (c.empresa || '').toLowerCase() === adminCompanyFilter.toLowerCase()
-      );
-    }
-
-    // Ordenar por visitas decrescentes
-    filteredCards.sort((a, b) => (visitsByCard[b.id] || 0) - (visitsByCard[a.id] || 0));
-
-    // Atualizar lista
-    const list = document.getElementById('admin-cards-list');
-    list.innerHTML = '';
-
-    if (filteredCards.length === 0) {
-      list.innerHTML = '<div class="text-center py-8 text-gray-400"><p>Nenhum cartão encontrado</p></div>';
-    } else {
+    if (adminCompanyFilter.trim()) filteredCards = filteredCards.filter(c=>(c.empresa||'').toLowerCase()===adminCompanyFilter.toLowerCase());
+    filteredCards.sort((a,b)=>(visitsByCard[b.id]||0)-(visitsByCard[a.id]||0));
+    const list = document.getElementById('admin-cards-list'); list.innerHTML = '';
+    if (filteredCards.length===0) { list.innerHTML='<div class="text-center py-8 text-gray-400"><p>Nenhum cartão encontrado</p></div>'; }
+    else {
       filteredCards.forEach(card => {
-        const visits = visitsByCard[card.id] || 0;
+        const visits = visitsByCard[card.id]||0;
         const row = document.createElement('div');
         row.className = 'flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition';
-        
-        const info = document.createElement('div');
-        info.className = 'flex-1';
-        
-        info.innerHTML = `
-          <p class="text-sm font-medium text-gray-800">${escHtml(card.nome || 'Sem nome')}</p>
-          <p class="text-xs text-gray-500">${card.cargo ? escHtml(card.cargo) + ' · ' : ''}${card.empresa ? escHtml(card.empresa) : ''}</p>
-          <p class="text-xs text-gray-400 mt-1">
-            <i data-lucide="phone" class="w-3 h-3 inline mr-1"></i>${escHtml(card.telemovel || 'Sem telefone')} | 
-            <i data-lucide="mail" class="w-3 h-3 inline mx-1"></i>${escHtml(card.email || 'Sem email')}
-          </p>
-          <p class="text-xs text-blue-600 mt-1">
-            <i data-lucide="eye" class="w-3 h-3 inline mr-1"></i>Visitas: <span class="font-semibold">${visits}</span> | 
-            <i data-lucide="calendar" class="w-3 h-3 inline mx-1"></i>${new Date(card.created_at).toLocaleString('pt-PT')}
-          </p>
-        `;
+        const info = document.createElement('div'); info.className='flex-1';
+        info.innerHTML=`
+          <p class="text-sm font-medium text-gray-800">${escHtml(card.nome||'Sem nome')}</p>
+          <p class="text-xs text-gray-500">${card.cargo?escHtml(card.cargo)+' · ':''}${card.empresa?escHtml(card.empresa):''}</p>
+          <p class="text-xs text-gray-400 mt-1"><i data-lucide="phone" class="w-3 h-3 inline mr-1"></i>${escHtml(card.telemovel||'Sem telefone')} | <i data-lucide="mail" class="w-3 h-3 inline mx-1"></i>${escHtml(card.email||'Sem email')}</p>
+          <p class="text-xs text-blue-600 mt-1"><i data-lucide="eye" class="w-3 h-3 inline mr-1"></i>Visitas: <span class="font-semibold">${visits}</span> | <i data-lucide="calendar" class="w-3 h-3 inline mx-1"></i>${new Date(card.created_at).toLocaleString('pt-PT')}</p>`;
         row.appendChild(info);
-
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'flex gap-2';
-        
-        const downloadBtn = document.createElement('button');
-        downloadBtn.className = 'px-3 py-1.5 rounded text-sm text-white bg-blue-500 hover:bg-blue-600 transition';
-        downloadBtn.innerHTML = '<i data-lucide="download" class="w-4 h-4 inline"></i>';
-        downloadBtn.onclick = () => adminDownloadCard(card);
-        actionsDiv.appendChild(downloadBtn);
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'px-3 py-1.5 rounded text-sm text-white bg-red-500 hover:bg-red-600 transition';
-        deleteBtn.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4 inline"></i>';
-        deleteBtn.onclick = () => adminDeleteCard(card);
-        actionsDiv.appendChild(deleteBtn);
-
-        row.appendChild(actionsDiv);
-        list.appendChild(row);
+        const actionsDiv = document.createElement('div'); actionsDiv.className='flex gap-2';
+        const dlBtn = document.createElement('button'); dlBtn.className='px-3 py-1.5 rounded text-sm text-white bg-blue-500 hover:bg-blue-600 transition'; dlBtn.innerHTML='<i data-lucide="download" class="w-4 h-4 inline"></i>'; dlBtn.onclick=()=>adminDownloadCard(card); actionsDiv.appendChild(dlBtn);
+        const delBtn = document.createElement('button'); delBtn.className='px-3 py-1.5 rounded text-sm text-white bg-red-500 hover:bg-red-600 transition'; delBtn.innerHTML='<i data-lucide="trash-2" class="w-4 h-4 inline"></i>'; delBtn.onclick=()=>adminDeleteCard(card); actionsDiv.appendChild(delBtn);
+        row.appendChild(actionsDiv); list.appendChild(row);
       });
     }
-
-    // Atualizar lista de empresas para filtro
-    const companies = [...new Set(allCardsData.map(c => c.empresa).filter(e => e))].sort();
+    const companies = [...new Set(allCardsData.map(c=>c.empresa).filter(e=>e))].sort();
     const companyFilter = document.getElementById('admin-company-filter');
     if (companyFilter) {
-      const currentValue = companyFilter.value;
-      companyFilter.innerHTML = '<option value="">Todas as Empresas</option>';
-      companies.forEach(company => {
-        const opt = document.createElement('option');
-        opt.value = company;
-        opt.textContent = company;
-        companyFilter.appendChild(opt);
-      });
-      companyFilter.value = currentValue;
+      const cur = companyFilter.value; companyFilter.innerHTML='<option value="">Todas as Empresas</option>';
+      companies.forEach(company => { const opt=document.createElement('option'); opt.value=company; opt.textContent=company; companyFilter.appendChild(opt); });
+      companyFilter.value = cur;
     }
-
     lucide.createIcons();
-  } catch (err) {
-    console.error('Erro ao carregar painel admin:', err);
-    showToast('Erro ao carregar dados do painel');
-  }
+  } catch (err) { showToast('Erro ao carregar dados do painel'); }
 }
 
 async function adminDeleteCard(card) {
-  const confirmMsg = `Eliminar cartão de ${card.nome}?`;
   const userConfirm = document.createElement('div');
-  userConfirm.className = 'fixed inset-0 z-50 flex items-center justify-center';
-  userConfirm.style.background = 'rgba(0,0,0,0.4)';
-  userConfirm.innerHTML = `
-    <div class="bg-white rounded-xl p-6 max-w-sm mx-4 shadow-xl">
-      <h4 class="font-semibold text-gray-800 mb-2">Confirmar eliminação?</h4>
-      <p class="text-sm text-gray-500 mb-4">${confirmMsg}</p>
-      <div class="flex gap-3 justify-end">
-        <button onclick="this.parentElement.parentElement.remove()" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
-        <button id="confirm-admin-delete" class="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Eliminar</button>
-      </div>
-    </div>
-  `;
+  userConfirm.className='fixed inset-0 z-50 flex items-center justify-center'; userConfirm.style.background='rgba(0,0,0,0.4)';
+  userConfirm.innerHTML=`<div class="bg-white rounded-xl p-6 max-w-sm mx-4 shadow-xl"><h4 class="font-semibold text-gray-800 mb-2">Confirmar eliminação?</h4><p class="text-sm text-gray-500 mb-4">Eliminar cartão de ${escHtml(card.nome)}?</p><div class="flex gap-3 justify-end"><button onclick="this.parentElement.parentElement.remove()" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">Cancelar</button><button id="confirm-admin-delete" class="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Eliminar</button></div></div>`;
   document.body.appendChild(userConfirm);
-
   document.getElementById('confirm-admin-delete').onclick = async () => {
-    const btn = document.getElementById('confirm-admin-delete');
-    btn.disabled = true;
-    btn.textContent = 'A eliminar...';
-
+    const btn = document.getElementById('confirm-admin-delete'); btn.disabled=true; btn.textContent='A eliminar...';
     try {
-      const { error } = await sb.from('vcards').delete().eq('id', card.id);
-      if (error) throw error;
-      
-      // Eliminar visitas também
-      await sb.from('card_visits').delete().eq('card_id', card.id);
-      
-      showToast('Cartão eliminado!');
-      userConfirm.remove();
-      await loadAdminPanel();
-    } catch (err) {
-      showToast('Erro ao eliminar cartão');
-      btn.disabled = false;
-      btn.textContent = 'Eliminar';
-    }
+      const { error } = await sb.from('vcards').delete().eq('id',card.id); if (error) throw error;
+      await sb.from('card_visits').delete().eq('card_id',card.id);
+      showToast('Cartão eliminado!'); userConfirm.remove(); await loadAdminPanel();
+    } catch (err) { showToast('Erro ao eliminar cartão'); btn.disabled=false; btn.textContent='Eliminar'; }
   };
 }
 
 async function adminExportMass() {
   const btn = document.getElementById('admin-export-mass-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin inline"></i> A exportar...';
-  lucide.createIcons();
-
+  btn.disabled=true; btn.innerHTML='<i data-lucide="loader" class="w-4 h-4 animate-spin inline"></i> A exportar...'; lucide.createIcons();
   try {
     const { data: allCardsData } = await sb.from('vcards').select('*');
-    
-    let csvContent = 'data:text/csv;charset=utf-8,' + 
-      'Nome,Cargo,Empresa,Telefone,Email,Website,Morada,Redes Sociais,Data Criação\n';
-    
+    let csvContent = 'data:text/csv;charset=utf-8,Nome,Cargo,Empresa,Telefone,Email,Website,Morada,Redes Sociais,Data Criação\n';
     allCardsData.forEach(card => {
-      const socials = [
-        card.instagram ? `Instagram: ${card.instagram}` : '',
-        card.facebook ? `Facebook: ${card.facebook}` : '',
-        card.linkedin ? `LinkedIn: ${card.linkedin}` : '',
-        card.whatsapp ? `WhatsApp: ${card.whatsapp}` : '',
-        card.youtube ? `YouTube: ${card.youtube}` : '',
-        card.tiktok ? `TikTok: ${card.tiktok}` : '',
-        card.twitter ? `Twitter: ${card.twitter}` : ''
-      ].filter(s => s).join('; ');
-      
-      const row = [
-        card.nome || '',
-        card.cargo || '',
-        card.empresa || '',
-        card.telemovel || '',
-        card.email || '',
-        card.website || '',
-        card.address || '',
-        socials,
-        new Date(card.created_at).toLocaleString('pt-PT')
-      ].map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',');
-      
-      csvContent += row + '\n';
+      const socials = [card.instagram?'Instagram: '+card.instagram:'',card.facebook?'Facebook: '+card.facebook:'',card.linkedin?'LinkedIn: '+card.linkedin:'',card.whatsapp?'WhatsApp: '+card.whatsapp:'',card.youtube?'YouTube: '+card.youtube:'',card.tiktok?'TikTok: '+card.tiktok:'',card.twitter?'Twitter: '+card.twitter:''].filter(s=>s).join('; ');
+      const row = [card.nome||'',card.cargo||'',card.empresa||'',card.telemovel||'',card.email||'',card.website||'',card.address||'',socials,new Date(card.created_at).toLocaleString('pt-PT')].map(cell=>`"${(cell||'').replace(/"/g,'""')}"`).join(',');
+      csvContent += row+'\n';
     });
-    
-    const link = document.createElement('a');
-    link.setAttribute('href', encodeURI(csvContent));
-    link.setAttribute('download', `cartoes_export_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
+    const link = document.createElement('a'); link.setAttribute('href',encodeURI(csvContent)); link.setAttribute('download',`cartoes_export_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
     showToast(`${allCardsData.length} cartões exportados!`);
-  } catch (err) {
-    showToast('Erro ao exportar cartões');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="download" class="w-4 h-4 inline"></i> Exportar Todos (CSV)';
-    lucide.createIcons();
-  }
+  } catch (err) { showToast('Erro ao exportar cartões'); }
+  finally { btn.disabled=false; btn.innerHTML='<i data-lucide="download" class="w-4 h-4 inline"></i> Exportar Todos (CSV)'; lucide.createIcons(); }
 }
 
-// Persiste o login do usuário
 async function restoreSession() {
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (session && session.user) {
       currentUser = session.user;
       document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('login-screen').style.display  = 'none';
       document.getElementById('app').style.display = 'flex';
-      
-      if (ADMIN_EMAILS.includes(currentUser.email)) {
-        document.getElementById('admin-section').style.display = 'block';
-      } else {
-        document.getElementById('admin-section').style.display = 'none';
-      }
-      
-      await loadUserCards();
-      navTo('dashboard');
-      lucide.createIcons();
-      return true;
+      if (ADMIN_EMAILS.includes(currentUser.email)) document.getElementById('admin-section').style.display='block';
+      else document.getElementById('admin-section').style.display='none';
+      await loadUserCards(); navTo('dashboard'); lucide.createIcons(); return true;
     }
-  } catch (err) {
-    console.error('Erro ao restaurar sessão:', err);
-  }
+  } catch (err) {}
   return false;
 }
 
-// Espera o DOM estar pronto e inicializa corretamente
 document.addEventListener('DOMContentLoaded', async function() {
   await initSupabase();
-  
   const params = new URLSearchParams(window.location.search);
   const viewId = params.get('view');
-  
-  // Se é link público, carregar cartão público E SAIR
   if (viewId) {
     document.getElementById('loading-screen').style.display = 'flex';
     await loadPublicCard(viewId);
-    return; // 👈 IMPORTANTE: Não continua com login logic
+    return;
   }
-  
-  // Só se NÃO é view pública, tenta restaurar sessão
   const sessionRestored = await restoreSession();
-  
   if (!sessionRestored) {
-    // Se não há sessão, mostra login
     document.getElementById('loading-screen').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('login-screen').style.display  = 'flex';
     document.getElementById('app').style.display = 'none';
-    
-    // Só atualiza preview se os elementos existirem
-    if (document.getElementById('f-name')) {
-      updatePreview();
-      pickColor('#4338ca');
-      pickTemplate('classic');
-    }
+    if (document.getElementById('f-name')) { updatePreview(); pickColor('#4338ca'); pickTemplate('classic'); }
     lucide.createIcons();
   }
 });
@@ -1397,8 +913,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     <div class="w-12 h-12 rounded-full border-4 border-gray-600 border-t-white animate-spin mx-auto mb-4"></div>
     <p class="text-white text-sm font-medium">A carregar cartão...</p>
    </div>
-  </div><!-- LOGIN SCREEN -->
-  <div id="login-screen" class="h-full w-full flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+  </div>
+  <!-- LOGIN SCREEN -->
+  <div id="login-screen" class="h-full w-full flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black" style="display:none;">
    <div class="w-full max-w-md">
     <div class="bg-white rounded-2xl shadow-2xl p-8">
      <div class="text-center mb-8">
@@ -1407,16 +924,20 @@ document.addEventListener('DOMContentLoaded', async function() {
      </div>
      <div class="space-y-4">
       <div>
-       <label class="block text-xs font-medium text-gray-600 mb-1">Email</label> <input id="login-email" type="email" placeholder="seu@email.com" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-green-500">
+       <label class="block text-xs font-medium text-gray-600 mb-1">Email</label>
+       <input id="login-email" type="email" placeholder="seu@email.com" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-green-500">
       </div>
       <div>
-       <label class="block text-xs font-medium text-gray-600 mb-1">Senha</label> <input id="login-password" type="password" placeholder="••••••••" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-green-500">
-      </div><button onclick="doLogin(event)" class="w-full py-2.5 rounded-lg text-white font-medium text-sm transition" style="background: #1a6b4a;">Entrar</button>
+       <label class="block text-xs font-medium text-gray-600 mb-1">Senha</label>
+       <input id="login-password" type="password" placeholder="••••••••" class="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-green-500">
+      </div>
+      <button onclick="doLogin(event)" class="w-full py-2.5 rounded-lg text-white font-medium text-sm transition" style="background: #1a6b4a;">Entrar</button>
      </div>
      <div id="login-error" class="text-xs text-red-600 text-center mt-4 hidden"></div>
     </div>
    </div>
-  </div><!-- APP -->
+  </div>
+  <!-- APP -->
   <div id="app" style="display:none" class="h-full w-full flex">
    <!-- SIDEBAR -->
    <aside id="sidebar" class="w-60 flex-shrink-0 flex flex-col" style="background: linear-gradient(180deg, #312e81 0%, #4338ca 100%);">
@@ -1425,15 +946,19 @@ document.addEventListener('DOMContentLoaded', async function() {
      <p class="text-indigo-300 text-xs mt-1">Cartões digitais profissionais</p>
     </div>
     <nav class="flex-1 px-3 py-2 space-y-1">
-     <button onclick="navTo('dashboard')" data-nav="dashboard" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"> <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard </button> <button onclick="navTo('perfil')" data-nav="perfil" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"> <i data-lucide="user" class="w-4 h-4"></i> Perfil </button> <button onclick="navTo('contactos')" data-nav="contactos" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"> <i data-lucide="phone" class="w-4 h-4"></i> Contactos </button> <button onclick="navTo('design')" data-nav="design" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"> <i data-lucide="palette" class="w-4 h-4"></i> Design </button> <button onclick="navTo('share')" data-nav="share" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"> <i data-lucide="link-2" class="w-4 h-4"></i> Partilhar </button> <button onclick="navTo('export')" data-nav="export" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"> <i data-lucide="download" class="w-4 h-4"></i> Exportar </button>
+     <button onclick="navTo('dashboard')" data-nav="dashboard" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"><i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard</button>
+     <button onclick="navTo('perfil')"    data-nav="perfil"    class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"><i data-lucide="user"             class="w-4 h-4"></i> Perfil</button>
+     <button onclick="navTo('contactos')" data-nav="contactos" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"><i data-lucide="phone"            class="w-4 h-4"></i> Contactos</button>
+     <button onclick="navTo('design')"    data-nav="design"    class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"><i data-lucide="palette"          class="w-4 h-4"></i> Design</button>
+     <button onclick="navTo('share')"     data-nav="share"     class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"><i data-lucide="link-2"           class="w-4 h-4"></i> Partilhar</button>
+     <button onclick="navTo('export')"    data-nav="export"    class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"><i data-lucide="download"         class="w-4 h-4"></i> Exportar</button>
      <div id="admin-section" style="display:none;" class="border-t border-indigo-600 mt-2 pt-2">
-      <button onclick="navTo('admin')" data-nav="admin" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"> <i data-lucide="shield" class="w-4 h-4"></i> Administração </button>
+      <button onclick="navTo('admin')" data-nav="admin" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white"><i data-lucide="shield" class="w-4 h-4"></i> Administração</button>
      </div>
     </nav>
     <div class="p-4 border-t border-indigo-600">
-     <div class="text-indigo-300 text-xs">
-      Total de cartões: <span id="card-count" class="text-white font-semibold">0</span>
-     </div><button onclick="doLogout()" class="w-full mt-3 px-3 py-2 rounded-lg text-sm text-indigo-200 hover:text-white hover:bg-indigo-700 transition flex items-center justify-center gap-2"> <i data-lucide="log-out" class="w-4 h-4"></i> Sair </button>
+     <div class="text-indigo-300 text-xs">Total de cartões: <span id="card-count" class="text-white font-semibold">0</span></div>
+     <button onclick="doLogout()" class="w-full mt-3 px-3 py-2 rounded-lg text-sm text-indigo-200 hover:text-white hover:bg-indigo-700 transition flex items-center justify-center gap-2"><i data-lucide="log-out" class="w-4 h-4"></i> Sair</button>
     </div>
    </aside>
    <div class="flex-1 flex flex-col h-full overflow-hidden">
@@ -1444,9 +969,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       <p id="section-desc" class="text-xs text-gray-400">Os seus cartões guardados</p>
      </div>
      <div class="flex items-center gap-2">
-      <button id="save-btn" onclick="saveCard()" class="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium" style="background: #4338ca; display:none;"> <i data-lucide="save" class="w-4 h-4"></i> Guardar </button>
+      <button id="save-btn" onclick="saveCard()" class="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium" style="background:#4338ca;display:none;"><i data-lucide="save" class="w-4 h-4"></i> Guardar</button>
      </div>
-    </header><!-- CONTENT AREA -->
+    </header>
+    <!-- CONTENT AREA -->
     <div class="flex-1 overflow-auto p-6 pt-8">
      <!-- DASHBOARD -->
      <section id="sec-dashboard" class="fade-in">
@@ -1456,50 +982,42 @@ document.addEventListener('DOMContentLoaded', async function() {
        <p class="text-lg font-medium">Nenhum cartão criado</p>
        <p class="text-sm mt-1">Comece a criar o seu primeiro cartão digital</p>
       </div>
-     </section><!-- PERFIL -->
+     </section>
+     <!-- PERFIL -->
      <section id="sec-perfil" style="display:none;">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
        <div class="space-y-4">
         <div class="bg-white rounded-xl p-5 border border-gray-200 space-y-4">
          <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide">Fotos</h4>
          <div>
-          <label class="block text-xs font-medium text-gray-500 mb-2" for="f-cover">Foto de Capa</label> <input id="f-cover" type="file" accept="image/*" class="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
-          <p class="text-xs text-gray-400 mt-1">Recomendado: 800x300px</p>
+          <label class="block text-xs font-medium text-gray-500 mb-2" for="f-cover">Logo / Foto de Capa</label>
+          <input id="f-cover" type="file" accept="image/*" class="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
+          <p class="text-xs text-gray-400 mt-1">Usado como logo no topo do cartão público</p>
          </div>
          <div>
-          <label class="block text-xs font-medium text-gray-500 mb-2" for="f-avatar">Foto de Perfil</label> <input id="f-avatar" type="file" accept="image/*" class="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
-          <p class="text-xs text-gray-400 mt-1">Recomendado: Quadrado (200x200px)</p><button type="button" id="edit-avatar-btn" onclick="openAvatarEditor()" class="mt-2 px-3 py-1.5 rounded-lg text-sm text-white" style="background:#4338ca; display:none;">Editar Foto</button>
+          <label class="block text-xs font-medium text-gray-500 mb-2" for="f-avatar">Foto de Perfil</label>
+          <input id="f-avatar" type="file" accept="image/*" class="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm">
+          <p class="text-xs text-gray-400 mt-1">Recomendado: quadrado (200x200px)</p>
          </div>
         </div>
         <div class="bg-white rounded-xl p-5 border border-gray-200 space-y-4">
          <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide">Informações Pessoais</h4>
-         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1" for="f-name">Nome Completo *</label> <input id="f-name" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="João Silva" style="--accent:#4338ca;">
-         </div>
-         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1" for="f-role">Cargo / Função</label> <input id="f-role" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Designer Gráfico">
-         </div>
-         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1" for="f-company">Empresa</label> <input id="f-company" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Estúdio Criativo">
-         </div>
-         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1" for="f-department">Departamento</label> <input id="f-department" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Design">
-         </div>
-         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1" for="f-about">Sobre</label> <textarea id="f-about" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm resize-none" rows="3" placeholder="Descreva você ou a sua empresa..."></textarea>
-         </div>
+         <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-name">Nome Completo *</label><input id="f-name" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="João Silva" style="--accent:#4338ca;"></div>
+         <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-role">Cargo / Função</label><input id="f-role" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Designer Gráfico"></div>
+         <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-company">Empresa</label><input id="f-company" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Estúdio Criativo"></div>
+         <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-department">Departamento</label><input id="f-department" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Design"></div>
+         <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-about">Slogan / Sobre</label><textarea id="f-about" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm resize-none" rows="3" placeholder="Supervisão Credível, Proteção Garantida..."></textarea></div>
         </div>
-       </div><!-- LIVE PREVIEW -->
+       </div>
+       <!-- LIVE PREVIEW -->
        <div>
         <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Pré-visualização</h4>
         <div id="preview-card" class="bg-white rounded-2xl border border-gray-200 shadow-sm" style="overflow:visible;">
-         <div id="preview-banner" class="h-24 relative" style="background: linear-gradient(135deg, #4338ca, #6366f1); overflow:visible;">
-          <img id="preview-cover-img" style="display:none; width:100%; height:100%; object-fit:cover;">
+         <div id="preview-banner" class="h-24 relative" style="background:linear-gradient(135deg,#4338ca,#6366f1);overflow:visible;">
+          <img id="preview-cover-img" style="display:none;width:100%;height:100%;object-fit:cover;">
           <div class="absolute -bottom-8 left-5 w-16 h-16 rounded-full bg-white border-4 border-white shadow flex items-center justify-center text-2xl font-bold overflow-hidden z-10" style="color:#4338ca;">
-           <img id="preview-avatar-img" style="display:none; width:100%; height:100%; object-fit:cover;">
-           <div id="preview-avatar">
-            J
-           </div>
+           <img id="preview-avatar-img" style="display:none;width:100%;height:100%;object-fit:cover;">
+           <div id="preview-avatar">J</div>
           </div>
          </div>
          <div class="pt-12 px-5 pb-5 overflow-hidden" style="border-radius:0 0 1rem 1rem;">
@@ -1507,118 +1025,90 @@ document.addEventListener('DOMContentLoaded', async function() {
           <p id="preview-role" class="text-sm text-gray-500">Designer Gráfico</p>
           <p id="preview-company" class="text-xs text-gray-400 mt-0.5">Estúdio Criativo</p>
           <div class="mt-4 space-y-2">
-           <div id="preview-phone-row" class="flex items-center gap-2 text-sm text-gray-600 hidden">
-            <i data-lucide="phone" class="w-3.5 h-3.5" style="color:#4338ca;"></i> <span id="preview-phone"></span>
-           </div>
-           <div id="preview-email-row" class="flex items-center gap-2 text-sm text-gray-600 hidden">
-            <i data-lucide="mail" class="w-3.5 h-3.5" style="color:#4338ca;"></i> <span id="preview-email"></span>
-           </div>
-           <div id="preview-web-row" class="flex items-center gap-2 text-sm text-gray-600 hidden">
-            <i data-lucide="globe" class="w-3.5 h-3.5" style="color:#4338ca;"></i> <span id="preview-web"></span>
-           </div>
-           <div id="preview-addr-row" class="flex items-center gap-2 text-sm text-gray-600 hidden">
-            <i data-lucide="map-pin" class="w-3.5 h-3.5" style="color:#4338ca; flex-shrink:0; margin-top:2px;"></i> <span id="preview-addr" style="word-break:break-word; line-height:1.5; white-space:pre-wrap;"></span>
-           </div>
+           <div id="preview-phone-row" class="flex items-center gap-2 text-sm text-gray-600 hidden"><i data-lucide="phone" class="w-3.5 h-3.5" style="color:#4338ca;"></i><span id="preview-phone"></span></div>
+           <div id="preview-email-row" class="flex items-center gap-2 text-sm text-gray-600 hidden"><i data-lucide="mail"  class="w-3.5 h-3.5" style="color:#4338ca;"></i><span id="preview-email"></span></div>
+           <div id="preview-web-row"   class="flex items-center gap-2 text-sm text-gray-600 hidden"><i data-lucide="globe" class="w-3.5 h-3.5" style="color:#4338ca;"></i><span id="preview-web"></span></div>
+           <div id="preview-addr-row"  class="flex items-center gap-2 text-sm text-gray-600 hidden"><i data-lucide="map-pin" class="w-3.5 h-3.5" style="color:#4338ca;flex-shrink:0;margin-top:2px;"></i><span id="preview-addr" style="word-break:break-word;line-height:1.5;white-space:pre-wrap;"></span></div>
           </div>
           <div id="preview-socials" class="flex gap-2 mt-3 flex-wrap"></div>
          </div>
         </div>
        </div>
       </div>
-     </section><!-- CONTACTOS -->
+     </section>
+     <!-- CONTACTOS -->
      <section id="sec-contactos" style="display:none;">
       <div class="max-w-lg space-y-4">
        <div class="bg-white rounded-xl p-5 border border-gray-200 space-y-4">
         <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide">Dados de Contacto</h4>
-        <div id="f-phone" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="+351 9xx xxx xxx" oninput="updatePreview()">
-        </div>
-        <div>
-         <label class="block text-xs font-medium text-gray-500 mb-1" for="f-email">Email Pessoal</label> <input id="f-email" type="email" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="email@example.com" oninput="updatePreview()">
-        </div>
-        <div>
-         <label class="block text-xs font-medium text-gray-500 mb-1" for="f-phone-empresa">Telefone Empresa</label> <input id="f-phone-empresa" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="+351 2xx xxx xxx">
-        </div>
-        <div>
-         <label class="block text-xs font-medium text-gray-500 mb-1" for="f-email-empresa">Email Empresa</label> <input id="f-email-empresa" type="email" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="contato@empresa.com">
-        </div>
-        <div>
-         <label class="block text-xs font-medium text-gray-500 mb-1" for="f-fax">Fax</label> <input id="f-fax" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="+351 2xx xxx xxx">
-        </div>
-        <div>
-         <label class="block text-xs font-medium text-gray-500 mb-1" for="f-horario">Horário de Funcionamento</label> <input id="f-horario" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Seg-Sex: 9h-18h">
-        </div>
-        <div>
-         <label class="block text-xs font-medium text-gray-500 mb-1" for="f-website">Website</label> <input id="f-website" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="www.joaosilva.com">
-        </div>
-        <div>
-         <label class="block text-xs font-medium text-gray-500 mb-1" for="f-address">Morada</label> <input id="f-address" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Lisboa, Portugal">
-         <div class="pt-3 border-t border-gray-200">
-          <h5 class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Redes Sociais</h5>
-          <div class="space-y-3">
-           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1" for="f-instagram">Instagram</label> <input id="f-instagram" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="@seu_usuario">
-           </div>
-           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1" for="f-facebook">Facebook</label> <input id="f-facebook" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="seu.perfil">
-           </div>
-           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1" for="f-linkedin">LinkedIn</label> <input id="f-linkedin" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="seu-perfil">
-           </div>
-           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1" for="f-whatsapp">WhatsApp</label> <input id="f-whatsapp" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="+244 9xx xxx xxx">
-           </div>
-           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1" for="f-youtube">YouTube</label> <input id="f-youtube" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="@seu_canal">
-           </div>
-           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1" for="f-tiktok">TikTok</label> <input id="f-tiktok" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="@seu_usuario">
-           </div>
-           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1" for="f-twitter">Twitter/X</label> <input id="f-twitter" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="@seu_usuario">
-           </div>
-          </div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-phone">Telemóvel</label><input id="f-phone" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="+244 9xx xxx xxx" oninput="updatePreview()"></div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-email">Email Corporativo</label><input id="f-email" type="email" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="email@example.com" oninput="updatePreview()"></div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-phone-empresa">Telefone Empresa</label><input id="f-phone-empresa" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="+244 2xx xxx xxx"></div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-email-empresa">Email Institucional</label><input id="f-email-empresa" type="email" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="contato@empresa.com"></div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-fax">Email Geral</label><input id="f-fax" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="geral@empresa.com"></div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-horario">Horário de Funcionamento</label><input id="f-horario" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Seg-Sex: 9h-18h"></div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-website">Website</label><input id="f-website" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="www.empresa.com"></div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-address">Morada</label><input id="f-address" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="Luanda, Angola"></div>
+        <div class="pt-3 border-t border-gray-200">
+         <h5 class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Redes Sociais</h5>
+         <div class="space-y-3">
+          <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-linkedin">LinkedIn</label><input id="f-linkedin" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="seu-perfil"></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-instagram">Instagram</label><input id="f-instagram" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="@seu_usuario"></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-facebook">Facebook</label><input id="f-facebook" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="seu.perfil"></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-whatsapp">WhatsApp</label><input id="f-whatsapp" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="+244 9xx xxx xxx"></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-youtube">YouTube</label><input id="f-youtube" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="@seu_canal"></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-tiktok">TikTok</label><input id="f-tiktok" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="@seu_usuario"></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1" for="f-twitter">Twitter/X</label><input id="f-twitter" class="field-input w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm" placeholder="@seu_usuario"></div>
          </div>
         </div>
        </div>
       </div>
-     </section><!-- DESIGN -->
+     </section>
+     <!-- DESIGN -->
      <section id="sec-design" style="display:none;">
       <div class="max-w-2xl space-y-6">
        <div class="bg-white rounded-xl p-5 border border-gray-200">
         <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4">Cor de Destaque</h4>
         <div class="flex flex-wrap gap-3">
-         <button onclick="pickColor('#4338ca')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#4338ca;" data-color="#4338ca"></button> <button onclick="pickColor('#0891b2')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#0891b2;" data-color="#0891b2"></button> <button onclick="pickColor('#059669')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#059669;" data-color="#059669"></button> <button onclick="pickColor('#d97706')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#d97706;" data-color="#d97706"></button> <button onclick="pickColor('#dc2626')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#dc2626;" data-color="#dc2626"></button> <button onclick="pickColor('#7c3aed')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#7c3aed;" data-color="#7c3aed"></button> <button onclick="pickColor('#be185d')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#be185d;" data-color="#be185d"></button> <button onclick="pickColor('#1e293b')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#1e293b;" data-color="#1e293b"></button>
+         <button onclick="pickColor('#4338ca')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#4338ca;" data-color="#4338ca"></button>
+         <button onclick="pickColor('#0891b2')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#0891b2;" data-color="#0891b2"></button>
+         <button onclick="pickColor('#059669')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#059669;" data-color="#059669"></button>
+         <button onclick="pickColor('#d97706')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#d97706;" data-color="#d97706"></button>
+         <button onclick="pickColor('#dc2626')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#dc2626;" data-color="#dc2626"></button>
+         <button onclick="pickColor('#7c3aed')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#7c3aed;" data-color="#7c3aed"></button>
+         <button onclick="pickColor('#be185d')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#be185d;" data-color="#be185d"></button>
+         <button onclick="pickColor('#1e293b')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#1e293b;" data-color="#1e293b"></button>
+         <button onclick="pickColor('#1a3a6b')" class="color-swatch w-10 h-10 rounded-full border-2 border-transparent hover:scale-110 transition" style="background:#1a3a6b;" data-color="#1a3a6b"></button>
         </div>
         <div class="mt-4 flex items-center gap-3">
-         <label class="text-xs text-gray-500">Cor personalizada:</label> <input type="color" id="custom-color" value="#4338ca" onchange="pickColor(this.value)" class="w-8 h-8 rounded cursor-pointer border-0"> <input type="text" id="custom-color-hex" value="#4338ca" maxlength="7" placeholder="#000000" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-mono w-24" onchange="if(/^#[0-9A-F]{6}$/i.test(this.value)) pickColor(this.value); else showToast('Formato inválido');" oninput="this.value = this.value.toUpperCase();">
+         <label class="text-xs text-gray-500">Cor personalizada:</label>
+         <input type="color" id="custom-color" value="#4338ca" onchange="pickColor(this.value)" class="w-8 h-8 rounded cursor-pointer border-0">
+         <input type="text" id="custom-color-hex" value="#4338ca" maxlength="7" placeholder="#000000" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-mono w-24" onchange="if(/^#[0-9A-F]{6}$/i.test(this.value)) pickColor(this.value); else showToast('Formato inválido');" oninput="this.value=this.value.toUpperCase();">
         </div>
        </div>
        <div class="bg-white rounded-xl p-5 border border-gray-200">
         <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4">Template</h4>
         <div class="grid grid-cols-3 gap-3">
-         <div onclick="pickTemplate('classic')" class="template-card rounded-xl border-2 border-gray-200 p-4 text-center" data-tpl="classic">
-          <div class="h-12 rounded-lg mb-2" style="background: linear-gradient(135deg, #4338ca, #6366f1);"></div><span class="text-xs font-medium text-gray-600">Clássico</span>
-         </div>
-         <div onclick="pickTemplate('minimal')" class="template-card rounded-xl border-2 border-gray-200 p-4 text-center" data-tpl="minimal">
-          <div class="h-12 rounded-lg mb-2 bg-gray-100 border border-gray-200"></div><span class="text-xs font-medium text-gray-600">Minimal</span>
-         </div>
-         <div onclick="pickTemplate('bold')" class="template-card rounded-xl border-2 border-gray-200 p-4 text-center" data-tpl="bold">
-          <div class="h-12 rounded-lg mb-2 bg-gray-900"></div><span class="text-xs font-medium text-gray-600">Bold</span>
-         </div>
+         <div onclick="pickTemplate('classic')" class="template-card rounded-xl border-2 border-gray-200 p-4 text-center" data-tpl="classic"><div class="h-12 rounded-lg mb-2" style="background:linear-gradient(135deg,#4338ca,#6366f1);"></div><span class="text-xs font-medium text-gray-600">Clássico</span></div>
+         <div onclick="pickTemplate('minimal')" class="template-card rounded-xl border-2 border-gray-200 p-4 text-center" data-tpl="minimal"><div class="h-12 rounded-lg mb-2 bg-gray-100 border border-gray-200"></div><span class="text-xs font-medium text-gray-600">Minimal</span></div>
+         <div onclick="pickTemplate('bold')"    class="template-card rounded-xl border-2 border-gray-200 p-4 text-center" data-tpl="bold">   <div class="h-12 rounded-lg mb-2 bg-gray-900"></div><span class="text-xs font-medium text-gray-600">Bold</span></div>
         </div>
        </div>
       </div>
-     </section><!-- SHARE -->
+     </section>
+     <!-- SHARE -->
      <section id="sec-share" style="display:none;">
       <div class="max-w-lg space-y-4">
        <div class="bg-white rounded-xl p-5 border border-gray-200">
         <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Partilhar Cartão</h4>
-        <p class="text-sm text-gray-500 mb-4">Selecione um cartão para gerar um link público e QR Code</p><select id="share-select" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm mb-3"> <option value="">-- Escolha um cartão --</option> </select>
+        <p class="text-sm text-gray-500 mb-4">Selecione um cartão para gerar um link público e QR Code</p>
+        <select id="share-select" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm mb-3"><option value="">-- Escolha um cartão --</option></select>
         <div id="share-container" class="hidden space-y-4">
          <div>
           <label class="text-xs font-medium text-gray-600">Link Público:</label>
           <div class="flex gap-2 mt-1">
-           <input id="share-link" type="text" readonly class="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50"> <button onclick="copyLink()" class="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition">Copiar</button>
+           <input id="share-link" type="text" readonly class="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50">
+           <button onclick="copyLink()" class="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition">Copiar</button>
           </div>
          </div>
          <div>
@@ -1628,17 +1118,17 @@ document.addEventListener('DOMContentLoaded', async function() {
         </div>
        </div>
       </div>
-     </section><!-- EXPORT -->
+     </section>
+     <!-- EXPORT -->
      <section id="sec-export" style="display:none;">
       <div class="max-w-lg space-y-4">
        <div class="bg-white rounded-xl p-5 border border-gray-200 space-y-4">
         <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide">Exportar Cartão</h4>
         <p class="text-sm text-gray-500">Escolha o formato de exportação para o cartão.</p>
-        <div id="export-select-msg" class="text-sm text-amber-600 bg-amber-50 rounded-lg p-3 hidden">
-         <i data-lucide="alert-circle" class="w-4 h-4 inline"></i> Preencha os dados antes de exportar.
-        </div>
+        <div id="export-select-msg" class="text-sm text-amber-600 bg-amber-50 rounded-lg p-3 hidden"><i data-lucide="alert-circle" class="w-4 h-4 inline"></i> Preencha os dados antes de exportar.</div>
         <div id="export-actions" class="flex gap-3">
-         <button onclick="downloadVCF()" class="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-gray-200 text-sm font-medium text-gray-700 hover:border-indigo-400 hover:text-indigo-600 transition"> <i data-lucide="file-text" class="w-5 h-5"></i> Ficheiro VCF </button> <button onclick="downloadQR()" class="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-gray-200 text-sm font-medium text-gray-700 hover:border-indigo-400 hover:text-indigo-600 transition"> <i data-lucide="qr-code" class="w-5 h-5"></i> QR Code </button>
+         <button onclick="downloadVCF()" class="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-gray-200 text-sm font-medium text-gray-700 hover:border-indigo-400 hover:text-indigo-600 transition"><i data-lucide="file-text" class="w-5 h-5"></i> Ficheiro VCF</button>
+         <button onclick="downloadQR()"  class="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-gray-200 text-sm font-medium text-gray-700 hover:border-indigo-400 hover:text-indigo-600 transition"><i data-lucide="qr-code"   class="w-5 h-5"></i> QR Code</button>
         </div>
        </div>
        <div id="qr-container" class="bg-white rounded-xl p-5 border border-gray-200 hidden">
@@ -1647,35 +1137,24 @@ document.addEventListener('DOMContentLoaded', async function() {
         <p class="text-xs text-gray-400 text-center mt-2">Clique com o botão direito para guardar a imagem</p>
        </div>
       </div>
-     </section><!-- ADMIN -->
+     </section>
+     <!-- ADMIN -->
      <section id="sec-admin" style="display:none;">
       <div class="max-w-4xl space-y-4">
        <div class="bg-white rounded-xl p-5 border border-gray-200">
         <h4 class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4">Painel de Administração</h4>
         <p class="text-sm text-gray-500 mb-4">Gerencie todos os cartões do sistema</p>
         <div id="admin-stats" class="grid grid-cols-3 gap-4 mb-6">
-         <div class="bg-indigo-50 rounded-lg p-4">
-          <p class="text-xs text-indigo-600 uppercase font-semibold">Total de Utilizadores</p>
-          <p id="admin-users-count" class="text-2xl font-bold text-indigo-900 mt-1">0</p>
-         </div>
-         <div class="bg-green-50 rounded-lg p-4">
-          <p class="text-xs text-green-600 uppercase font-semibold">Total de Cartões</p>
-          <p id="admin-cards-count" class="text-2xl font-bold text-green-900 mt-1">0</p>
-         </div>
-         <div class="bg-blue-50 rounded-lg p-4">
-          <p class="text-xs text-blue-600 uppercase font-semibold">Cartões Hoje</p>
-          <p id="admin-today-count" class="text-2xl font-bold text-blue-900 mt-1">0</p>
-         </div>
-        </div><!-- Filtros e Ações -->
+         <div class="bg-indigo-50 rounded-lg p-4"><p class="text-xs text-indigo-600 uppercase font-semibold">Total de Utilizadores</p><p id="admin-users-count" class="text-2xl font-bold text-indigo-900 mt-1">0</p></div>
+         <div class="bg-green-50  rounded-lg p-4"><p class="text-xs text-green-600  uppercase font-semibold">Total de Cartões</p>      <p id="admin-cards-count" class="text-2xl font-bold text-green-900  mt-1">0</p></div>
+         <div class="bg-blue-50   rounded-lg p-4"><p class="text-xs text-blue-600   uppercase font-semibold">Cartões Hoje</p>          <p id="admin-today-count" class="text-2xl font-bold text-blue-900   mt-1">0</p></div>
+        </div>
         <div class="bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
          <h5 class="text-sm font-semibold text-gray-700 mb-3">Filtros e Ações</h5>
          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div><label class="block text-xs font-medium text-gray-600 mb-1">Pesquisar</label> <input type="text" id="admin-search" placeholder="Nome ou cargo..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500" oninput="adminSearchQuery = this.value; loadAdminPanel();">
-          </div>
-          <div><label class="block text-xs font-medium text-gray-600 mb-1">Empresa</label> <select id="admin-company-filter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500" onchange="adminCompanyFilter = this.value; loadAdminPanel();"> <option value="">Todas as Empresas</option> </select>
-          </div>
-          <div><label class="block text-xs font-medium text-gray-600 mb-1">&nbsp;</label> <button id="admin-export-mass-btn" onclick="adminExportMass()" class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2"> <i data-lucide="download" class="w-4 h-4"></i> Exportar Todos (CSV) </button>
-          </div>
+          <div><label class="block text-xs font-medium text-gray-600 mb-1">Pesquisar</label><input type="text" id="admin-search" placeholder="Nome ou cargo..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500" oninput="adminSearchQuery=this.value;loadAdminPanel();"></div>
+          <div><label class="block text-xs font-medium text-gray-600 mb-1">Empresa</label><select id="admin-company-filter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500" onchange="adminCompanyFilter=this.value;loadAdminPanel();"><option value="">Todas as Empresas</option></select></div>
+          <div><label class="block text-xs font-medium text-gray-600 mb-1">&nbsp;</label><button id="admin-export-mass-btn" onclick="adminExportMass()" class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> Exportar Todos (CSV)</button></div>
          </div>
         </div>
         <h5 class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Todos os Cartões</h5>
@@ -1685,36 +1164,36 @@ document.addEventListener('DOMContentLoaded', async function() {
      </section>
     </div>
    </div>
-  </div><!-- DELETE MODAL -->
+  </div>
+  <!-- DELETE MODAL -->
   <div id="delete-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center" style="background:rgba(0,0,0,0.4);">
    <div class="bg-white rounded-xl p-6 max-w-sm mx-4 shadow-xl">
     <h4 class="font-semibold text-gray-800 mb-2">Eliminar cartão?</h4>
     <p class="text-sm text-gray-500 mb-4">Esta ação não pode ser desfeita.</p>
     <div class="flex gap-3 justify-end">
-     <button onclick="closeDeleteModal()" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">Cancelar</button> <button id="confirm-delete-btn" class="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Eliminar</button>
+     <button onclick="closeDeleteModal()" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+     <button id="confirm-delete-btn" class="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Eliminar</button>
     </div>
    </div>
-  </div><!-- TOAST -->
+  </div>
+  <!-- TOAST -->
   <div id="toast" class="fixed top-4 right-4 z-50 hidden">
    <div class="toast-msg flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm text-white" style="background:#4338ca;">
-    <i data-lucide="check-circle" class="w-4 h-4"></i> <span id="toast-text"></span>
+    <i data-lucide="check-circle" class="w-4 h-4"></i><span id="toast-text"></span>
    </div>
   </div>
   <script>
-['f-name', 'f-role', 'f-company', 'f-website', 'f-address', 'f-about', 'f-instagram', 'f-facebook', 'f-linkedin', 'f-whatsapp', 'f-youtube', 'f-tiktok', 'f-twitter', 'f-phone', 'f-email'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('input', updatePreview);
+['f-name','f-role','f-company','f-website','f-address','f-about','f-instagram','f-facebook','f-linkedin','f-whatsapp','f-youtube','f-tiktok','f-twitter','f-phone','f-email'].forEach(id => {
+  const el = document.getElementById(id); if (el) el.addEventListener('input', updatePreview);
 });
 
 document.getElementById('f-cover').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+  const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = function(event) {
     coverImageData = file;
     const img = document.getElementById('preview-cover-img');
-    img.src = event.target.result;
-    img.style.display = 'block';
+    img.src = event.target.result; img.style.display = 'block';
     document.getElementById('preview-banner').style.background = 'none';
     updatePreview();
   };
@@ -1722,138 +1201,32 @@ document.getElementById('f-cover').addEventListener('change', function(e) {
 });
 
 document.getElementById('f-avatar').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+  const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = function(event) {
     avatarImageData = file;
-    const btn = document.getElementById('edit-avatar-btn');
-    btn.style.display = 'block';
     const img = document.getElementById('preview-avatar-img');
-    img.src = event.target.result;
-    img.style.display = 'block';
+    img.src = event.target.result; img.style.display = 'block';
     document.getElementById('preview-avatar').style.display = 'none';
     updatePreview();
   };
   reader.readAsDataURL(file);
 });
 
-// Trigger updatePreview when avatar file input changes
-document.getElementById('f-avatar').addEventListener('change', updatePreview);
-
-function openAvatarEditor() {
-  if (!avatarImageData || !(avatarImageData instanceof File)) {
-    showToast('Selecione uma imagem primeiro');
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = function(event) {
-    const modal = document.getElementById('avatar-editor-modal');
-    const editorImg = document.getElementById('avatar-editor-img');
-    const previewImg = document.getElementById('avatar-preview-circle');
-    
-    editorImg.src = event.target.result;
-    previewImg.src = event.target.result;
-    
-    avatarEditorData = { x: 0, y: 0, zoom: 100, isDragging: false, startX: 0, startY: 0 };
-    updateAvatarEditorDisplay();
-    
-    modal.classList.remove('hidden');
-    lucide.createIcons();
-    
-    setupAvatarDragging();
-  };
-  reader.readAsDataURL(avatarImageData);
-}
-
-function setupAvatarDragging() {
-  const img = document.getElementById('avatar-editor-img');
-  const container = img.parentElement;
-  const zoomSlider = document.getElementById('avatar-zoom');
-
-  img.onmousedown = (e) => {
-    avatarEditorData.isDragging = true;
-    avatarEditorData.startX = e.clientX - avatarEditorData.x;
-    avatarEditorData.startY = e.clientY - avatarEditorData.y;
-    img.style.cursor = 'grabbing';
-  };
-
-  document.onmousemove = (e) => {
-    if (!avatarEditorData.isDragging) return;
-    avatarEditorData.x = e.clientX - avatarEditorData.startX;
-    avatarEditorData.y = e.clientY - avatarEditorData.startY;
-    updateAvatarEditorDisplay();
-  };
-
-  document.onmouseup = () => {
-    avatarEditorData.isDragging = false;
-    img.style.cursor = 'grab';
-  };
-
-  zoomSlider.oninput = (e) => {
-    avatarEditorData.zoom = parseInt(e.target.value);
-    document.getElementById('zoom-value').textContent = avatarEditorData.zoom;
-    updateAvatarEditorDisplay();
-  };
-}
-
-function updateAvatarEditorDisplay() {
-  const img = document.getElementById('avatar-editor-img');
-  const previewImg = document.getElementById('avatar-preview-circle');
-  const scale = avatarEditorData.zoom / 100;
-
-  img.style.transform = `translate(${avatarEditorData.x}px, ${avatarEditorData.y}px) scale(${scale})`;
-  previewImg.style.transform = `translate(${avatarEditorData.x}px, ${avatarEditorData.y}px) scale(${scale})`;
-}
-
-function saveAvatarEdit() {
-  const modal = document.getElementById('avatar-editor-modal');
-  const previewImg = document.getElementById('avatar-preview-circle');
-  const previewCircle = document.getElementById('preview-avatar-img');
-  
-  previewCircle.src = previewImg.src;
-  previewCircle.style.transform = `translate(${avatarEditorData.x}px, ${avatarEditorData.y}px) scale(${avatarEditorData.zoom / 100})`;
-  previewCircle.style.display = 'block';
-  document.getElementById('preview-avatar').style.display = 'none';
-  
-  modal.classList.add('hidden');
-  updatePreview();
-  showToast('Foto de perfil guardada!');
-}
-
-function closeAvatarEditor() {
-  document.getElementById('avatar-editor-modal').classList.add('hidden');
-  document.onmousemove = null;
-  document.onmouseup = null;
-}
-
-function getFirstPhone() {
-  return document.getElementById('f-phone').value || '';
-}
-
-function getFirstEmail() {
-  return document.getElementById('f-email').value || '';
-}
+function getFirstPhone() { return document.getElementById('f-phone').value||''; }
+function getFirstEmail() { return document.getElementById('f-email').value||''; }
 
 function adminDownloadCard(card) {
-  const vcardData = `BEGIN:VCARD\nVERSION:3.0\nFN:${card.nome}\nTITLE:${card.cargo || ''}\nORG:${card.empresa || ''}\n`;
-  const telefones = card.telefones ? card.telefones.split('|').filter(t => t) : [];
-  const emails = card.emails ? card.emails.split('|').filter(e => e) : [];
-  
-  telefones.forEach(tel => vcardData += `TEL;TYPE=CELL:${tel}\n`);
-  emails.forEach(email => vcardData += `EMAIL:${email}\n`);
-  
-  const vcf = vcardData + `END:VCARD`;
-  
-  const blob = new Blob([vcf], { type: 'text/vcard' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = (card.nome.replace(/\s+/g, '_') || 'contact') + '.vcf';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  let vcf = `BEGIN:VCARD\nVERSION:3.0\nFN:${card.nome}\nTITLE:${card.cargo||''}\nORG:${card.empresa||''}\n`;
+  if (card.telemovel)        vcf += `TEL;TYPE=CELL:${card.telemovel}\n`;
+  if (card.telefone_empresa) vcf += `TEL;TYPE=WORK:${card.telefone_empresa}\n`;
+  if (card.email)            vcf += `EMAIL:${card.email}\n`;
+  if (card.email_empresa)    vcf += `EMAIL;TYPE=WORK:${card.email_empresa}\n`;
+  vcf += `END:VCARD`;
+  const blob = new Blob([vcf],{type:'text/vcard'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(card.nome.replace(/\s+/g,'_')||'contact')+'.vcf'; a.click(); URL.revokeObjectURL(a.href);
   showToast('Cartão descarregado!');
 }
   </script>
- <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9f36de8621fb77dd',t:'MTc3NzM4NzcyMS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+ </body>
 </html>
