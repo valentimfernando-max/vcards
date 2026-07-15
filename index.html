@@ -137,8 +137,8 @@ const sectionMeta = {
 };
 
 async function initSupabase() {
-  const SUPABASE_URL = 'https://tgobchnkeewoonnsesqv.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnb2JjaG5rZWV3b29ubnNlc3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNTc4NTgsImV4cCI6MjA5MTczMzg1OH0.-G5sJicu8G-7H7s9MsDGVGu45mz43XtiAoskW5A6zSs';
+  const SUPABASE_URL = 'https://embhreocuqoqxkijtdwp.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtYmhyZW9jdXFvcXhraWp0ZHdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMzMxOTYsImV4cCI6MjA5OTcwOTE5Nn0.XP09yGU9_7sWnT7puTlIErcOm2LVw7wvsMHoDhhXSxA';
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
@@ -172,7 +172,7 @@ function checkPublicView() {
 async function loadPublicCard(cardId) {
   try {
     // Cliente público sem autenticação para cartões públicos
-    const sbPublic = supabase.createClient('https://tgobchnkeewoonnsesqv.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnb2JjaG5rZWV3b29ubnNlc3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNTc4NTgsImV4cCI6MjA5MTczMzg1OH0.-G5sJicu8G-7H7s9MsDGVGu45mz43XtiAoskW5A6zSs');
+    const sbPublic = supabase.createClient('https://embhreocuqoqxkijtdwp.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtYmhyZW9jdXFvcXhraWp0ZHdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMzMxOTYsImV4cCI6MjA5OTcwOTE5Nn0.XP09yGU9_7sWnT7puTlIErcOm2LVw7wvsMHoDhhXSxA');
     
     const { data, error } = await sbPublic.from('vcards').select('*').eq('id', cardId).single();
     
